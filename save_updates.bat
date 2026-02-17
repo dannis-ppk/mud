@@ -14,7 +14,7 @@ echo 2. Saving (Commit)...
 git commit -m "%msg%"
 echo.
 echo 3. Uploading (Push)...
-git push
+git push -u origin master
 echo.
 echo Done! Your changes are safe on GitHub.
 pause
