@@ -1,0 +1,34 @@
+command,aliases,description,usage
+north,n,Move north,n
+south,s,Move south,s
+east,e,Move east,e
+west,w,Move west,w
+look,l,Look at surroundings,look
+inventory,i;inv,Check inventory,i
+equipment,eq,Check equipment,eq
+quit,q;exit,Quit game,quit
+get,take,Pick up an item,get <item> | get all
+drop,,Drop an item,drop <item>
+wear,equip,Equip an item,wear <item> [left/right]
+remove,,Unequip an item,remove <item>
+list,li,List items in shop,list
+buy,,Buy item from shop,buy <item>
+sell,,Sell item to shop,sell <item> | sell all <keyword>
+kill,k;attack;a,Attack an enemy,kill <enemy>
+skill power,sp;p a,Power Attack (1.5x Dmg),sp <enemy>
+skill berserk,sb;b a,Berserk Attack (3x Dmg),sb <enemy>
+skill double,sd;d s,Double Strike (2 Hits),sd <enemy>
+cast heal,ch;c h,Heal Self (30 HP),cast heal
+cast fireball,cf;c f,Small Fireball (Single Target),cast fireball <enemy>
+cast firestorm,cfs;c fs,Medium Fireball (AOE Damage),cast firestorm
+drink,quaff,Drink a potion,drink <potion>
+eat,,Eat food,eat <food>
+sit down,sit d;sit,Sit down to rest,sit down
+stand up,sta u;stand,Stand up,stand up
+read,re,Read a scroll,read <scroll>
+train,,Train stats,train <stat> (str/dex/con/int)
+aliases,,List command aliases,aliases
+help,h,Show help,help
+skill,sk,List skills / Use skill,skill [name]
+skill blind,bl,Blind Enemy (Lower Def),bl <enemy>
+skill kick,kn;kp,Kick Enemy (Dmg + Def Down),kn <enemy>

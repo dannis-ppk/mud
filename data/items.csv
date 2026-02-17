@@ -1,0 +1,45 @@
+﻿id,name,type,value,keyword,min_dmg,max_dmg,defense,slot,description,english_name,hands,accuracy
+weapon_stick,木棍,weapon,10,stick,1,3,0,r_hand,一根普通的木棍，沒什麼殺傷力。,Wooden Stick,1,100
+weapon_dagger,短劍,weapon,50,dagger,3,6,0,r_hand,鋒利的金屬短劍，適合初學者。,Dagger,1,110
+weapon_sword,長劍,weapon,150,sword,6,10,0,r_hand,標準的士兵用劍，平衡性良好。,Sword,1,100
+weapon_axe,戰斧,weapon,200,axe,8,12,0,r_hand,沉重的鐵斧，威力巨大但揮動較慢。,Battle Axe,1,85
+weapon_bow,木弓,weapon,120,bow,4,8,0,r_hand,獵人常用的弓，需要箭矢(未實裝)。,Wooden Bow,2,90
+weapon_staff,法杖,weapon,300,staff,2,5,0,r_hand,鑲有寶石的魔杖，似乎蘊含魔力。,Magic Staff,2,100
+weapon_spear,長槍,weapon,250,spear,7,11,0,r_hand,攻擊距離較長的武器。,Spear,2,95
+weapon_greatsword,巨劍,weapon,500,greatsword,12,18,0,r_hand,雙手巨劍，破壞力驚人。,Greatsword,2,80
+weapon_frost_blade,霜之哀傷,weapon,2000,frost,20,30,0,r_hand,散發著寒氣的傳說之劍。,Frostmourne,2,85
+weapon_fire_axe,炎魔之斧,weapon,2000,fire,25,35,0,r_hand,燃燒著永恆火焰的巨斧。,Infernal Axe,2,80
+armor_cloth,布衣,armor,20,cloth,0,0,1,body,粗糙的布製衣服，防禦力極低。,Cloth Armor,0,0
+armor_leather,皮甲,armor,100,leather,0,0,3,body,由硬皮製成的護甲，輕便靈活。,Leather Armor,0,0
+armor_chain,鎖子甲,armor,300,chain,0,0,6,body,金屬環編織而成的鎧甲，防禦力不錯。,Chainmail,0,0
+armor_plate,板甲,armor,800,plate,0,0,12,body,厚重的全覆式鋼鐵盔甲，防禦力極高。,Plate Armor,0,0
+armor_mythril,秘銀甲,armor,3000,mythril,0,0,20,body,傳說金屬製成的鎧甲，輕盈且堅不可摧。,Mithril Armor,0,0
+item_healing_potion_s,小型生命藥水,consumable,50,s red;small red;red potion,0,0,0,none,回復 50 點生命值。,Small Health Potion,0,0
+item_healing_potion_m,中型生命藥水,consumable,150,m red;medium red;big red,0,0,0,none,回復 150 點生命值。,Medium Health Potion,0,0
+item_mana_potion_s,小型魔力藥水,consumable,50,s blue;small blue;blue potion,0,0,0,none,回復 30 點魔力值。,Small Mana Potion,0,0
+item_mana_potion_m,中型魔力藥水,consumable,150,m blue;medium blue;big blue,0,0,0,none,回復 100 點魔力值。,Medium Mana Potion,0,0
+item_bread,麵包,consumable,10,bread,0,0,0,none,一塊乾麵包，稍微回復些許體力。,Bread,0,0
+item_meat,生肉,consumable,20,meat,0,0,0,none,一塊生肉。,Raw Meat,0,0
+item_fur,兔皮,other,15,fur,0,0,0,none,柔軟的兔毛皮，可以賣給商人。,Rabbit Fur,0,0
+item_silk,蜘蛛絲,other,40,silk,0,0,0,none,強韌的絲線，製作材料。,Spider Silk,0,0
+item_gem,寶石,other,500,gem,0,0,0,none,閃閃發光的寶石，非常值錢。,Gem,0,0
+item_wing,蝙蝠翅膀,other,10,wing,0,0,0,none,吸血蝙蝠的翅膀，可以用來製作藥水。,Bat Wing,0,0
+item_tusk,野豬獠牙,other,30,tusk,0,0,0,none,尖銳的獠牙，看起來很危險。,Boar Tusk,0,0
+item_wood,靈木,other,50,wood,0,0,0,none,從樹精身上掉落的木材，散發著自然氣息。,Spirit Wood,0,0
+item_dust,魔塵,other,100,dust,0,0,0,none,閃爍著微光的粉塵，充滿魔法能量。,Magic Dust,0,0
+item_scroll_town,傳送卷軸,consumable,50,scroll;town scroll,0,0,0,none,一張閃著微光的卷軸，閱讀後可以瞬間回到村莊。,Town Scroll,0,0
+armor_leather_helm,皮帽,armor,40,helm;leather,0,0,1,head,普通的皮製帽子。,Leather Helm,0,0
+armor_chain_helm,鎖子頭盔,armor,150,helm;chain,0,0,3,head,金屬環編織的頭盔。,Chain Helm,0,0
+armor_plate_helm,板甲頭盔,armor,400,helm;plate,0,0,6,head,全覆式鋼鐵頭盔，視野稍受限。,Plate Helm,0,0
+armor_leather_legs,皮護腿,armor,60,legs;leather,0,0,2,legs,輕便的皮製護腿。,Leather Leggings,0,0
+armor_chain_legs,鎖子護腿,armor,200,legs;chain,0,0,4,legs,保護雙腿的鎖子甲。,Chain Leggings,0,0
+armor_plate_legs,板甲護腿,armor,500,legs;plate,0,0,8,legs,厚重的鋼鐵護腿。,Plate Leggings,0,0
+armor_leather_boots,皮靴,armor,40,boots;leather,0,0,1,feet,舒適的皮靴，適合長途跋涉。,Leather Boots,0,0
+armor_chain_boots,鎖鏈靴,armor,150,boots;chain,0,0,2,feet,加強防禦的戰靴。,Chain Boots,0,0
+armor_plate_boots,鋼鐵戰靴,armor,350,boots;plate,0,0,4,feet,沉重但堅固的鋼靴。,Plate Boots,0,0
+armor_wood_shield,木盾,armor,50,shield;wood,2,0,2,l_hand,粗糙的木製盾牌，能格擋少量攻擊。,Wood Shield,0,0
+armor_iron_shield,鐵盾,armor,200,shield;iron,0,0,5,l_hand,堅固的鐵盾，提供可靠的防禦。,Iron Shield,0,0
+armor_amulet_bronze,銅項鍊,armor,100,amulet;necklace,0,0,0,neck,普通的銅項鍊。,Bronze Amulet,0,0
+armor_amulet_silver,銀項鍊,armor,300,amulet;necklace,0,0,1,neck,精緻的銀項鍊。,Silver Amulet,0,0
+armor_ring_iron,鐵戒指,armor,80,ring;iron,0,0,0,finger,普通的鐵戒指。,Iron Ring,0,0
+armor_ring_gold,金戒指,armor,250,ring;gold,0,0,1,finger,閃耀的金戒指。,Gold Ring,0,0

@@ -1,0 +1,15 @@
+id,name,cost_type,cost_value,damage_formula,effect,description,req_level,type
+blind,致盲 (Blind),mv,5,0,def_down,Blinds the enemy reducing defense.,1,active
+kick,踢擊 (Kick),mv,5,base*1.2,stun,Kicks the enemy with a chance to stun.,1,active
+power,強力攻擊 (Power),mv,5,base*1.5,none,A powerful strike.,1,active
+berserk,狂暴攻擊 (Berserk),mv,10,base*3.0,none,A reckless attack with high damage but low accuracy.,1,active
+heal,治療術 (Heal),mp,10,0,heal_30,Restores health.,3,spell
+fireball,火球術 (Fireball),mp,15,20+int*2,none,Hurls a fireball at the enemy.,10,spell
+firestorm,烈焰風暴 (Firestorm),mp,30,15+int*1.5,aoe,Summons a storm of fire to burn all enemies.,20,spell
+double,雙重打擊 (Double),mv,20,base*2.0,none,Strikes twice in rapid succession.,20,passive
+armageddon,末日審判 (Armageddon),mp,100,500+int*5,none,The ultimate destruction spell.,50,spell
+charge,衝撞 (Charge),none,0,base*1.5,none,Charges at the target.,1,enemy
+bite,撕咬 (Bite),none,0,base*1.2,none,Bites the target.,1,enemy
+slash,揮砍 (Slash),none,0,base*1.2,none,Slashes the target.,1,enemy
+smash,重擊 (Smash),none,0,base*1.5,none,Smashes the target.,1,enemy
+triple_attack,三連擊 (Triple),none,0,base*3.0,none,Strikes three times.,1,enemy

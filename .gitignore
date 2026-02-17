@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.gitattributes
+.gitmodules
+
+# VS Code
+.vscode/
+
+# Project Specific
+debug.txt
+debug_raw.txt
+saves/
+*.tmp
+*.bak

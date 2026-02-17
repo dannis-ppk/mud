@@ -1,0 +1,6 @@
+key,value,description
+max_special_rooms,100,Max number of rooms with mutated enemies or high-tier loot per map generation
+mutation_chance,0.15,Probability of an enemy mutating in a non-boss room
+base_hit_chance,100,Base hit chance percentage before modifiers
+max_log_lines,35,Number of lines to display in the main game log
+help_page_size,10,Number of commands to show per page in help

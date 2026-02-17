@@ -1,0 +1,20 @@
+﻿id,name,description,hp,min_dmg,max_dmg,xp,gold,loot_item_id,loot_chance,respawn_time,equipment,type
+mob_rabbit,野兔 (Rabbit),一隻看起來無害的白色野兔在吃草。,20,2,5,10,5,item_fur,0.5,30,,beast
+mob_rat,變異巨鼠 (Mutant Rat),這隻老鼠比貓還大，眼睛發著綠光。,50,5,10,25,10,item_meat,0.4,30,,beast
+mob_slime,史萊姆 (Slime),綠色的黏液怪物，看起來很滑溜。,40,4,8,20,8,item_healing_potion_s,0.3,30,,beast
+mob_snake,毒蛇 (Snake),盤踞在樹枝上的蛇，發出嘶嘶聲。,60,6,12,35,12,weapon_dagger,0.2,30,,beast
+mob_wolf,森林狼 (Wolf),眼神兇惡的灰狼，發出低沉的咆嘯聲。,100,10,15,50,20,item_meat,0.6,45,,beast
+mob_goblin,哥布林 (Goblin),矮小狡猾的綠皮生物，手裡拿著破爛的武器。,80,8,14,45,25,weapon_dagger,0.3,45,weapon_dagger,humanoid
+mob_spider,巨型蜘蛛 (Giant Spider),一隻巨大的黑蜘蛛，正在編織新的網。,120,12,18,70,30,item_silk,0.8,45,,beast
+mob_bandit,強盜 (Bandit),蒙著面的強盜，手裡晃著短劍。,150,15,22,100,50,weapon_shortsword,0.2,60,weapon_dagger;armor_leather,humanoid
+mob_bear,狂暴熊 (Bear),身形巨大的棕熊，站起來比人還高。,300,20,30,200,80,item_meat,0.7,60,,beast
+mob_skeleton,骷髏兵 (Skeleton),一具活動的骷髏，手裡拿著生鏽的劍。,180,18,25,150,40,weapon_sword,0.2,60,weapon_sword;armor_chain,humanoid
+mob_orc,獸人戰士 (Orc),穿著鐵甲的獸人，揮舞著斧頭。,400,25,35,300,100,weapon_axe,0.25,90,weapon_axe;armor_plate,humanoid
+mob_troll,食人妖 (Troll),皮膚像岩石一樣堅硬的巨怪。,600,30,45,500,200,item_healing_potion_m,0.5,120,,humanoid
+boss_frost_king,霜之王 (Frost King),端坐在冰封王座上的骷髏王者，手持寒冰巨劍。,2000,50,80,5000,2000,weapon_frost_blade,1,300,weapon_frost_blade;armor_mythril,humanoid
+boss_fire_demon,炎魔 (Fire Demon),全身燃燒著地獄烈火的惡魔，手持烈焰戰斧。,2500,60,90,8000,3000,weapon_fire_axe,1,300,weapon_fire_axe;armor_mythril,humanoid
+mob_bat,吸血蝙蝠 (Vampire Bat),一隻倒掛在樹枝上的黑色蝙蝠，眼神兇惡。,30,3,6,15,5,item_wing,0.6,30,,beast
+mob_boar,森林野豬 (Wild Boar),皮厚肉粗的野豬，兩根獠牙十分銳利。,120,8,12,40,15,item_tusk,0.5,45,,beast
+mob_ent,樹精幼苗 (Treant Sapling),看起來像是一棵會走動的樹苗，樹皮如鐵般堅硬。,200,10,15,80,30,item_wood,0.8,60,,beast
+boss_bear_king,熊王 (Bear King),一隻巨大的熊，身上掛著銀色的項鍊。,500,20,30,500,200,armor_amulet_silver|1.0|Epic,1.0,300,,beast
+boss_orc_warlord,半獸人督軍 (Orc Warlord),全副武裝的半獸人首領，手指上戴著閃耀的金戒指。,600,25,35,600,300,armor_ring_gold|1.0|Epic,1.0,300,weapon_greatsword;armor_plate,humanoid
