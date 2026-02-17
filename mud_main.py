@@ -42,7 +42,7 @@ class Color:
         return f"{color}{text}[/]"
 
 class Enemy:
-    def __init__(self, name, description, hp, damage_range, xp_reward, gold_reward, loot_table=None, id=None, respawn_time=30, enemy_type="beast"):
+    def __init__(self, name, description, hp, damage_range, xp_reward, gold_reward, loot_table=None, id=None, respawn_time=30, enemy_type="beast", level=1):
         self.id = id
         self.respawn_time = respawn_time
         self.name = name
@@ -66,6 +66,11 @@ class Enemy:
         self.aggro_chance = 0.0 # Chance to auto-attack on player entry
         self.equipment = {} # slot -> Item
         self.debuffs = {} # {type: duration} (e.g., 'blind': 3, 'def_down': 3)
+        self.level = level
+        self.base_max_hp = hp
+        self.base_damage_range = damage_range
+        self.base_xp_reward = xp_reward
+        self.base_gold_reward = gold_reward
         
         # Skill Configuration
         self.skills = []
@@ -83,6 +88,25 @@ class Enemy:
              
         if is_boss:
              self.skills.append("triple_attack")
+
+    def scale_to_player(self, player_level):
+        """Scales enemy stats based on player level."""
+        # Logic: Effective Level = max(BaseLevel, PlayerLevel)
+        if player_level <= 1: return
+        
+        scale_factor = 1.0 + (player_level - 1) * 0.05
+        
+        self.max_hp = int(self.base_max_hp * scale_factor)
+        self.hp = self.max_hp # Heal to full
+        
+        min_d = int(self.base_damage_range[0] * scale_factor)
+        max_d = int(self.base_damage_range[1] * scale_factor)
+        self.damage_range = (min_d, max_d)
+        
+        self.xp_reward = int(self.base_xp_reward * scale_factor)
+        self.gold_reward = int(self.base_gold_reward * scale_factor)
+
+
 
     def is_alive(self):
         return self.hp > 0
@@ -193,7 +217,7 @@ class Enemy:
 
 
 class Item:
-    def __init__(self, name, description, value, keyword, rarity="Common", color="white", bonuses=None, english_name=""):
+    def __init__(self, name, description, value, keyword, rarity="Common", color="white", bonuses=None, english_name="", max_durability=0):
         self.name = name
         self.description = description
         self.value = value
@@ -204,6 +228,9 @@ class Item:
         self.rarity = rarity # Common, Fine, Rare
         self.color = color   # white, green, blue
         self.bonuses = bonuses if bonuses else {}
+        
+        self.max_durability = max_durability
+        self.current_durability = max_durability # Default to full
 
     def get_display_name(self):
         if self.english_name:
@@ -220,7 +247,9 @@ class Item:
             "english_name": self.english_name,
             "rarity": self.rarity,
             "color": self.color,
-            "bonuses": self.bonuses if self.bonuses else {}
+            "bonuses": self.bonuses if self.bonuses else {},
+            "max_durability": self.max_durability,
+            "current_durability": self.current_durability
         }
     
     @staticmethod
@@ -229,21 +258,36 @@ class Item:
             item = Weapon(data['name'], data['description'], data['value'], data['keyword'], 
                           data['min_dmg'], data['max_dmg'], data['slot'], 
                           data.get('rarity', "Common"), data.get('color', "white"), 
-                          data.get('bonuses', {}), data.get('english_name', ""))
+                          data.get('bonuses', {}), data.get('english_name', ""),
+                          hands=data.get('hands', 1), accuracy=data.get('accuracy', 100),
+                          max_durability=data.get('max_durability', 0))
         elif data['type'] == 'armor':
             item = Armor(data['name'], data['description'], data['value'], data['keyword'], 
                          data['defense'], data['slot'], 
                          data.get('rarity', "Common"), data.get('color', "white"), 
-                         data.get('bonuses', {}), data.get('english_name', ""))
+                         data.get('bonuses', {}), data.get('english_name', ""),
+                         max_durability=data.get('max_durability', 0))
         else:
             item = Item(data['name'], data['description'], data['value'], data['keyword'], 
                         data.get('rarity', "Common"), data.get('color', "white"), 
-                        data.get('bonuses', {}), data.get('english_name', ""))
+                        data.get('bonuses', {}), data.get('english_name', ""),
+                        max_durability=data.get('max_durability', 0))
+        
+        if 'max_durability' not in data or data['max_durability'] == 0:
+            # Legacy Save Fix: Default to 100 if not present
+            item.max_durability = 100
+            
+        # Load current durability if present (for saves), else default to max
+        if 'current_durability' in data:
+            item.current_durability = data['current_durability']
+        else:
+            item.current_durability = item.max_durability
+            
         return item
 
 class Weapon(Item):
-    def __init__(self, name, description, value, keyword, min_dmg, max_dmg, slot='r_hand', rarity="Common", color="white", bonuses=None, english_name="", hands=1, accuracy=100):
-        super().__init__(name, description, value, keyword, rarity, color, bonuses, english_name)
+    def __init__(self, name, description, value, keyword, min_dmg, max_dmg, slot='r_hand', rarity="Common", color="white", bonuses=None, english_name="", hands=1, accuracy=100, max_durability=100):
+        super().__init__(name, description, value, keyword, rarity, color, bonuses, english_name, max_durability)
         self.min_dmg = min_dmg
         self.max_dmg = max_dmg
         self.slot = slot
@@ -268,8 +312,8 @@ class Weapon(Item):
         return data
 
 class Armor(Item):
-    def __init__(self, name, description, value, keyword, defense, slot='body', rarity="Common", color="white", bonuses=None, english_name=""):
-        super().__init__(name, description, value, keyword, rarity, color, bonuses, english_name)
+    def __init__(self, name, description, value, keyword, defense, slot='body', rarity="Common", color="white", bonuses=None, english_name="", max_durability=100):
+        super().__init__(name, description, value, keyword, rarity, color, bonuses, english_name, max_durability)
         self.defense = defense
         self.slot = slot
         
@@ -298,6 +342,12 @@ class LootGenerator:
         # Skip rarity generation for consumables (they don't benefit from stat bonuses)
         if isinstance(new_item, Item) and not isinstance(new_item, (Weapon, Armor)):
             return new_item
+        
+        # Randomize initial durability (50% - 100%)
+        if new_item.max_durability > 0:
+            import math
+            min_dur = math.ceil(new_item.max_durability * 0.5)
+            new_item.current_durability = random.randint(min_dur, new_item.max_durability)
         
         roll = random.random()
         rarity_type = "Common"
@@ -1049,6 +1099,10 @@ class Game:
         # Build World from Loaded Rooms
         for r_id, room in self.loader.rooms.items():
             if hasattr(room, 'x') and hasattr(room, 'y'):
+                # Apply initial scaling to enemies in room
+                for e in room.enemies:
+                    e.scale_to_player(self.player.level if hasattr(self, 'player') else 1) # Player might not be ready in init, assume 1?
+                
                 self.world.add_room(room.x, room.y, room)
                 
                 if hasattr(room, '_raw_exits') and room._raw_exits:
@@ -1186,10 +1240,32 @@ class Game:
     
     def get_equipment_panel(self):
         eq_text = ""
-        for slot, item in self.player.equipment.items():
+        slot_map = {
+             'r_hand': 'E1', 'l_hand': 'E2',
+             'head': 'E3', 'neck': 'E4', 
+             'body': 'E5', 'legs': 'E6', 
+             'feet': 'E7', 'finger': 'E8'
+        }
+        
+        # Define standard order for display
+        order = ['r_hand', 'l_hand', 'head', 'neck', 'body', 'legs', 'feet', 'finger']
+        
+        for slot in order:
+            item = self.player.equipment.get(slot)
+            slot_id = slot_map.get(slot, '??')
+            
             item_name = item.name if item else "Empty"
             color = "white" if item else "dim"
-            eq_text += f"{slot.capitalize()}: [{color}]{item_name}[/]\n"
+            
+            dur_str = ""
+            if item and hasattr(item, 'max_durability') and item.max_durability > 0:
+                pct = int((item.current_durability / item.max_durability) * 100)
+                dur_color = "green"
+                if pct < 20: dur_color = "red"
+                elif pct < 50: dur_color = "yellow"
+                dur_str = f" [{dur_color}]({pct}%)[/]"
+            
+            eq_text += f"[{slot_id}] {slot.capitalize()}: [{color}]{item_name}[/]{dur_str}\n"
         
         return Panel(
             eq_text.strip(),
@@ -1347,6 +1423,8 @@ class Game:
                                     if proto_id in self.loader.enemies:
                                         new_enemy = copy.deepcopy(self.loader.enemies[proto_id])
                                         new_enemy.proto_id = proto_id
+                                        # Scale Enemy Logic
+                                        new_enemy.scale_to_player(self.player.level)
                                         r.enemies.append(new_enemy)
                                         # Log if player in room
                                         if r.x == self.player.x and r.y == self.player.y:
@@ -1719,6 +1797,9 @@ class Game:
         elif cmd == 'shop':
             self.handle_shop("list")
             return
+        elif cmd.startswith('repair ') or cmd.startswith('rep '):
+            self.handle_repair(cmd.split(' ', 1)[1])
+            return
         elif cmd == 'inv' or cmd == 'inventory' or cmd == 'i':
             self.show_inventory()
             return
@@ -1856,10 +1937,7 @@ class Game:
         if damage < 40: return "造成了毀滅性的一擊 (Smashed)"
         return "將目標打成了碎片! (Obliterated)"
 
-    def perform_attack(self, target, damage, msg_prefix, color="yellow"):
-        target.take_damage(damage)
-        desc = self.get_damage_description(damage)
-        self.log(f"{msg_prefix} [{color}]{damage}[/] 點傷害! ({desc})")
+
 
     def calculate_player_damage(self):
         # Calculate Base Damage using Player Stats (including bonuses)
@@ -1922,6 +2000,24 @@ class Game:
         prefix_end = "[/]" if color else ""
         
         self.log(f"{prefix_color}{flavor_text}{prefix_end} [bold]{target.name}[/] 造成了 {dmg_color}{actual_damage}[/] 點傷害。")
+        
+        # Weapon Durability Loss (Player Attacking)
+        weapon = self.player.equipment.get('r_hand')
+        if weapon and hasattr(weapon, 'max_durability') and weapon.max_durability > 0:
+             # Chance: 10% + 5% per level diff
+             chance = 0.1
+             if target.level > self.player.level:
+                 chance += (target.level - self.player.level) * 0.05
+             
+             if random.random() < chance:
+                 weapon.current_durability -= 1
+                 if weapon.current_durability <= 0:
+                     self.log(f"[bold red]你的 {weapon.name} 損壞了![/]")
+                     del self.player.equipment['r_hand']
+                     self.player.recalculate_stats()
+                 # Warn at 10%
+                 elif weapon.current_durability <= weapon.max_durability * 0.1:
+                      self.log(f"[bold red]你的 {weapon.name} 快要壞了! ({weapon.current_durability}/{weapon.max_durability})[/]")
         
 
 
@@ -2068,30 +2164,59 @@ class Game:
                      return
                 p.mp -= cost
                 
-        if skill_key == "power":
-            # Cost handled in validation block
-            base_dmg = random.randint(5 + p.str // 2, 10 + p.str // 2) 
-            damage = int(base_dmg * 1.5)
-            self.log(f"你使出 [bold cyan]強力攻擊[/]!")
+        # Calculate Base Damage once for use in formulas
+        # This includes Weapon Damage!
+        base_dmg = self.calculate_player_damage()
+        
+        # Evaluate Damage Formula from CSV
+        if hasattr(self, 'skills_data') and skill_key in self.skills_data:
+             sk_data = self.skills_data[skill_key]
+             formula = sk_data.get('dmg_formula', '0')
+             
+             # Safe Eval
+             try:
+                 # Context variables for eval
+                 # base: weapon damage + str bonus (normal attack)
+                 # int: player int stat
+                 # str: player str stat
+                 # level: player level
+                 
+                 # Prepare safe local namespace
+                 local_ns = {
+                     'base': base_dmg, 
+                     'int': p.get_stat('int'),
+                     'str': p.get_stat('str'),
+                     'dex': p.get_stat('dex'),
+                     'level': p.level
+                 }
+                 
+                 damage = int(eval(str(formula), {"__builtins__": {}}, local_ns))
+             except Exception as e:
+                 self.log(f"[red]技能傷害計算錯誤: {e}[/]")
+                 damage = 0
+                 
+             if damage > 0:
+                 # Output Flavor Text based on Skill
+                 # We can store flavor text in CSV too, but for now map it or use generic
+                 if skill_key == 'power':
+                      self.log(f"你使出 [bold cyan]強力攻擊[/]!")
+                 elif skill_key == 'berserk':
+                      self.log(f"你進入 [bold red]狂暴狀態[/] 瘋狂攻擊!")
+                 elif skill_key == 'double':
+                      self.log(f"你使出 [bold yellow]雙重打擊[/]!")
 
-        elif skill_key == "berserk":
-            # Cost handled in validation block
-            base_dmg = random.randint(5 + p.str // 2, 10 + p.str // 2)
-            damage = int(base_dmg * 3.0)
-            self.log(f"你進入 [bold red]狂暴狀態[/] 瘋狂攻擊!")
-
-        elif skill_key == "double":
+        # Fallback / Overrides for Specific Complex Logic (like Multi-hit or AOE)
+        # But for simple damage skills (power, berserk), the above eval covers it.
+        # We need to skip the old if/elif blocks for these if handled above.
+        
+        # ... checking if specific extra logic is needed ...
+        
+        if skill_key == "fireball":
             # Checks handled by validation
-            dmg1 = random.randint(5 + p.str // 2, 8 + p.str // 2)
-            dmg2 = random.randint(5 + p.str // 2, 8 + p.str // 2)
-            damage = dmg1 + dmg2
-            self.log(f"你使出 [bold yellow]雙重打擊[/]!")
-            
-        elif skill_key == "fireball":
-            # Checks handled by validation
-            damage = random.randint(20 + p.int, 40 + p.int * 2) # Buffed damage
+            # damage calculated by formula above (20+int*2)
             self.log(f"你詠唱咒語，發射出一顆 [bold red]火球[/]!")
             
+
         elif skill_key == "firestorm":
             # Checks handled by validation
             self.log(f"你詠唱古老的咒語，召喚出 [bold red]烈焰風暴[/]! (AOE)")
@@ -2158,6 +2283,10 @@ class Game:
             else:
                  self.log(f"你試圖踢擊 {target.name}，但是滑倒了 (失敗)!")
                  return
+
+        elif skill_key in ["power", "berserk", "double", "triple_attack"]:
+             # Handled by generic formula evaluator above
+             pass
 
         else:
             self.log(f"未知的技能: {skill_key}")
@@ -2371,6 +2500,33 @@ class Game:
         self.player.hp -= final_dmg
         self.log(f"{target.name} {flavor}了你!")
         self.log(f"你受到了 [red]{final_dmg}[/] 點傷害! (減免: {defense})")
+        
+        # Armor Durability Loss (Player Taking Damage)
+        if final_dmg > 0:
+             # Valid armor slots
+             armor_slots = ['body', 'head', 'legs', 'feet', 'l_hand'] # l_hand can be shield
+             valid_items = []
+             for slot in armor_slots:
+                 item = self.player.equipment.get(slot)
+                 if item and hasattr(item, 'max_durability') and item.max_durability > 0:
+                     valid_items.append((slot, item))
+             
+             if valid_items:
+                 slot, item = random.choice(valid_items)
+                 
+                 # Chance
+                 chance = 0.1
+                 if target.level > self.player.level:
+                      chance += (target.level - self.player.level) * 0.05
+                 
+                 if random.random() < chance:
+                     item.current_durability -= 1
+                     if item.current_durability <= 0:
+                         self.log(f"[bold red]你的 {item.name} 損壞了![/]")
+                         del self.player.equipment[slot]
+                         self.player.recalculate_stats()
+                     elif item.current_durability <= item.max_durability * 0.1:
+                          self.log(f"[bold red]你的 {item.name} 快要壞了! ({item.current_durability}/{item.max_durability})[/]")
         
         if self.player.hp <= 0:
             self.handle_death()
@@ -2741,11 +2897,105 @@ class Game:
             self.player.inventory.append(target_item)
             self.log(f"你購買了 {target_item.get_display_name()}，花費了 [yellow]{target_item.value}[/] 金幣。")
 
+    def handle_repair(self, target_str):
+        # 1. Location Check (Town Square 0,0)
+        if self.player.x != 0 or self.player.y != 0:
+            self.log("[red]只有在城鎮廣場 (Start Point) 才能進行修理。[/]")
+            return
+
+        target_str = target_str.strip().lower()
+        cost_per_point = 1
+        
+        items_to_repair = []
+        
+        if target_str == 'all':
+            # Check Equipment
+            for item in self.player.equipment.values():
+                if item and hasattr(item, 'max_durability') and item.current_durability < item.max_durability:
+                    items_to_repair.append(item)
+            # Check Inventory
+            for item in self.player.inventory:
+                if item and hasattr(item, 'max_durability') and item.current_durability < item.max_durability:
+                    items_to_repair.append(item)
+            
+            if not items_to_repair:
+                self.log("你沒有任何需要修理的物品。")
+                return
+        else:
+            # Single Item Repair
+            slot_map = {
+                 'e1': 'r_hand', 'e2': 'l_hand',
+                 'e3': 'head', 'e4': 'neck', 
+                 'e5': 'body', 'e6': 'legs', 
+                 'e7': 'feet', 'e8': 'finger'
+            }
+
+            found = None
+            # 1. Check Slot ID
+            if target_str in slot_map:
+                 real_slot = slot_map[target_str]
+                 found = self.player.equipment.get(real_slot)
+            else:
+                 # 2. Check Equipment Name
+                 for item in self.player.equipment.values():
+                     if item and (target_str in item.name.lower() or (item.keyword and target_str in item.keyword.lower())):
+                         found = item
+                         break
+                
+                 # 3. Check Inventory Name
+                 if not found:
+                     found, _ = self.get_item_and_index(self.player.inventory, target_str)
+            
+            if not found:
+                self.log(f"找不到 '{target_str}'。")
+                return
+            
+            if not hasattr(found, 'max_durability') or found.max_durability <= 0:
+                self.log(f"{found.name} 不這需要修理。")
+                return
+            
+            if found.current_durability >= found.max_durability:
+                self.log(f"{found.name} 完好無損。")
+                return
+                
+            items_to_repair.append(found)
+
+        # Calculate Total Cost
+        total_cost = 0
+        total_missing = 0
+        for item in items_to_repair:
+            missing = item.max_durability - item.current_durability
+            total_cost += missing * cost_per_point
+            total_missing += missing
+            
+        if total_cost == 0:
+             self.log("不需要修理。")
+             return
+
+        self.log(f"修理這些物品需要 [yellow]{total_cost}[/] 金幣。")
+        
+        # Check Gold
+        if self.player.gold < total_cost:
+             self.log(f"[red]金幣不足! (需要: {total_cost}, 擁有: {self.player.gold})[/]")
+             return
+             
+        # Execute Repair
+        self.player.gold -= total_cost
+        for item in items_to_repair:
+            item.current_durability = item.max_durability
+            
+        self.log(f"[green]修理完成! 花費了 {total_cost} 金幣。[/]")
+
     def show_equipment(self):
         self.log("[bold]裝備 (Equipment)[/]")
         for idx, (slot, item) in enumerate(self.player.equipment.items()):
             display = item.get_display_name() if item else "(Empty)"
-            self.log(f"{idx+1}. {slot.capitalize()}: {display}")
+            
+            dur_str = ""
+            if item and hasattr(item, 'max_durability') and item.max_durability > 0:
+                dur_str = f" [dim](Dur: {item.current_durability}/{item.max_durability})[/]"
+                
+            self.log(f"{idx+1}. {slot.capitalize()}: {display}{dur_str}")
 
     def handle_wear_item(self, keyword):
         # 1. Parse explicit slot suffix
@@ -2983,18 +3233,20 @@ class DataLoader:
                     desc = row['description']
                     english_name = row.get('english_name', '')
                     
+                    max_dur = int(row.get('max_durability', 0))
+
                     item = None
                     if i_type == 'weapon':
                         min_d = int(row.get('min_dmg', 0))
                         max_d = int(row.get('max_dmg', 0))
                         hands = int(row.get('hands', 1)) 
                         accuracy = int(row.get('accuracy', 100))
-                        item = Weapon(name, desc, int(value), keyword, min_d, max_d, slot, english_name=english_name, hands=hands, accuracy=accuracy)
+                        item = Weapon(name, desc, int(value), keyword, min_d, max_d, slot, english_name=english_name, hands=hands, accuracy=accuracy, max_durability=max_dur)
                     elif i_type == 'armor' or i_type == 'helm': 
                         defense = int(row.get('defense', 0))
-                        item = Armor(name, desc, int(value), keyword, int(defense), slot, english_name=english_name)
+                        item = Armor(name, desc, int(value), keyword, int(defense), slot, english_name=english_name, max_durability=max_dur)
                     else:
-                        item = Item(name, desc, int(value), keyword, english_name=english_name)
+                        item = Item(name, desc, int(value), keyword, english_name=english_name, max_durability=max_dur)
                     
                     self.items[item_id] = item
             print("Items loaded.")
@@ -3035,6 +3287,8 @@ class DataLoader:
                                 if item_id in self.items:
                                     loot.append((self.items[item_id], chance, rarity))
                     
+                    level = int(row.get('level', 1))
+
                     enemy = Enemy(
                         row['name'],
                         row['description'],
@@ -3045,7 +3299,8 @@ class DataLoader:
                         loot,
                         id=row['id'],
                         respawn_time=int(row.get('respawn_time', 30)),
-                        enemy_type=row.get('type', 'beast')
+                        enemy_type=row.get('type', 'beast'),
+                        level=level
                     )
                     
                     # Equip items

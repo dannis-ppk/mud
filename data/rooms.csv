@@ -1059,7 +1059,7 @@
 -3_0,村莊廣場,village,-3,0,這裡是新手村，四周充滿了祥和的氣氛。,,,
 -2_0,寧靜的角落,village,-2,0,這裡是新手村，四周充滿了祥和的氣氛。,,,
 -1_0,村莊廣場,village,-1,0,這裡是新手村，四周充滿了祥和的氣氛。,,,
-0_0,"村莊中心 (Village Center),有商店(shop)",village,0,0,村莊的中心廣場，有一個巨大的噴水池。北邊是森林，南邊是荒地。,,,item_bread;item_healing_potion_s;item_mana_potion_s;weapon_dagger;weapon_sword;armor_leather;armor_chain;item_scroll_town
+0_0,"村莊中心 (Village Center),有商店(shop)",village,0,0,村莊的中心廣場，有一個巨大的噴水池。這裡有雜貨店(shop)和鐵匠鋪(repair)。北邊是森林，南邊是荒地。,,,item_bread;item_healing_potion_s;item_mana_potion_s;weapon_dagger;weapon_sword;armor_leather;armor_chain;item_scroll_town
 1_0,冒險者公會前,village,1,0,這裡是新手村，四周充滿了祥和的氣氛。,,,
 2_0,村莊廣場,village,2,0,這裡是新手村，四周充滿了祥和的氣氛。,,,
 3_0,村莊廣場,village,3,0,這裡是新手村，四周充滿了祥和的氣氛。,,,

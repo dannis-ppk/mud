@@ -1,0 +1,3 @@
+PASS: skills.csv has BOM.
+PASS: Power caused 30 damage.
+PASS: Berserk caused 60 damage.
