@@ -36,9 +36,9 @@ def populate():
             if 4 <= y <= 9:
                 pool = ['mob_rabbit', 'mob_rat', 'mob_bat']
             elif 10 <= y <= 24:
-                pool = ['mob_wolf', 'mob_boar', 'mob_snake', 'mob_wisp']
+                pool = ['mob_wolf', 'mob_boar', 'mob_snake', 'mob_wisp', 'mob_thief']
             elif y >= 25:
-                pool = ['mob_bear', 'mob_spider', 'mob_ent', 'mob_bandit']
+                pool = ['mob_bear', 'mob_spider', 'mob_ent', 'mob_bandit', 'mob_thief', 'mob_thief'] # Double chance
             
             if pool:
                 choice = random.choice(pool)

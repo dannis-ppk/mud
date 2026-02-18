@@ -39,3 +39,10 @@ Or double-click `start_mud_game.bat` on Windows.
 - `saves/`: Save files (local only, ignored by git).
 - `get_latest.bat`: Helper script to pull updates from GitHub.
 - `save_updates.bat`: Helper script to commit and push changes to GitHub.
+- `docs/planning/`: Project tracking and roadmap.
+
+## Agent Collaboration
+If you are an AI agent working on this project (e.g., on a different machine), please:
+1.  Read `docs/planning/task.md` to see the current status and pending tasks.
+2.  Read `docs/planning/implementation_plan.md` for technical designs.
+3.  Read `docs/planning/roadmap.md` for long-term goals.

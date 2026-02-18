@@ -42,7 +42,7 @@ class Color:
         return f"{color}{text}[/]"
 
 class Enemy:
-    def __init__(self, name, description, hp, damage_range, xp_reward, gold_reward, loot_table=None, id=None, respawn_time=30, enemy_type="beast", level=1):
+    def __init__(self, name, description, hp, damage_range, xp_reward, gold_reward, loot_table=None, id=None, respawn_time=30, enemy_type="beast", level=1, is_thief=False):
         self.id = id
         self.respawn_time = respawn_time
         self.name = name
@@ -88,6 +88,9 @@ class Enemy:
              
         if is_boss:
              self.skills.append("triple_attack")
+             
+        self.is_thief = is_thief
+        self.stolen_gold = 0
 
     def scale_to_player(self, player_level):
         """Scales enemy stats based on player level."""
@@ -638,7 +641,15 @@ class Player:
         self.cha = 10  # Charisma - Shop Prices / Persuasion
         self.luk = 10  # Luck - Critical Hits / Drops
         
+        # Stats
         self.level = 1
+        self.str = 10 # Strength (Phy Dmg)
+        self.dex = 10 # Dexterity (Defense, MV, Stealth)
+        self.con = 10 # Constitution (HP, Regen)
+        self.int = 10 # Intelligence (MP, Magic)
+        self.luk = 10 # Luck (Crit, Drop)
+        self.wis = 10 # Wisdom (Legacy/Secondary)
+        self.cha = 10 # Charisma (Legacy/Shop)
         
         # Equipment (Simplified)
         self.equipment = {
@@ -694,7 +705,7 @@ class Player:
         dex = self.get_stat('dex')
         
         self.max_hp = con * 10 + self.level * 10 + 50
-        self.max_mp = int_stat * 10 + wis * 5
+        self.max_mp = int_stat * 10 + self.level * 5
         self.max_mv = dex * 10 + con * 10 + 300
         
         # Add Direct Bonuses from Equipment (HP/MP from Necklace/Ring)
@@ -770,7 +781,8 @@ class Player:
             self.dex += 1
             self.con += 1
             self.int += 1
-            self.stat_points += 5 # 5 Points per level
+            self.luk += 1
+            self.stat_points += 2 # 2 Points per level (User Request)
             
             self.recalculate_stats()
             # Heal on level up
@@ -1034,9 +1046,20 @@ class SaveManager:
             location_name = save_data["location_name"]
             timestamp = save_data["timestamp"]
             
+            player_name = save_data["player"].get("name", "Unknown")
+            player_str = save_data["player"].get("str", 0)
+            player_dex = save_data["player"].get("dex", 0)
+            player_con = save_data["player"].get("con", 0)
+            player_luk = save_data["player"].get("luk", 0)
+
             return {
+                "name": player_name,
                 "level": player_level,
                 "location_name": location_name,
+                "str": player_str,
+                "dex": player_dex,
+                "con": player_con,
+                "luk": player_luk,
                 "time": timestamp
             }
         except Exception:
@@ -1167,6 +1190,18 @@ class Game:
         dex_base, dex_bonus = p.get_stat_breakdown('dex')
         con_base, con_bonus = p.get_stat_breakdown('con')
         int_base, int_bonus = p.get_stat_breakdown('int')
+        luk_base, luk_bonus = p.get_stat_breakdown('luk')
+        
+        def fmt_stat(name, base, bonus):
+            if bonus > 0: return f"[bold]{name}[/bold] [green]{base}+{bonus}[/]"
+            return f"[bold]{name}[/bold] {base}"
+
+        grid.add_row(fmt_stat("STR", str_base, str_bonus), fmt_stat("INT", int_base, int_bonus))
+        grid.add_row(fmt_stat("DEX", dex_base, dex_bonus), fmt_stat("LUK", luk_base, luk_bonus))
+        grid.add_row(fmt_stat("CON", con_base, con_bonus), "")
+        
+        if p.stat_points > 0:
+             grid.add_row(f"[bold yellow]Points: {p.stat_points}[/]", "")
         
         str_display = f"{str_base} [green](+{str_bonus})[/]" if str_bonus > 0 else f"{str_base}"
         dex_display = f"{dex_base} [green](+{dex_bonus})[/]" if dex_bonus > 0 else f"{dex_base}"
@@ -1301,8 +1336,7 @@ class Game:
         # Footer: Input
         layout["footer"].update(Panel(f"> {cmd_buffer}", title="Input", border_style="yellow"))
 
-    def run(self):
-        # --- Main Menu ---
+    def main_menu(self):
         while True:
             self.console.clear()
             self.console.print(Panel(Align.center("[bold cyan]MUD: The Age[/]\n[white]A Text RPG Adventure[/]"), style="bold blue"))
@@ -1312,56 +1346,71 @@ class Game:
             for i in range(1, 4):
                 info = self.save_manager.get_save_info(i)
                 if info:
-                    self.console.print(Align.center(f"[{i+1}] Load Slot {i}: Lv{info['level']} @ {info['location_name']} ({info['time']})"))
+                    stats = f"Lv{info['level']} {info['location_name']}"
+                    if 'str' in info: stats += f" (STR:{info['str']} DEX:{info['dex']})"
+                    self.console.print(Align.center(f"[{i+1}] Slot {i}: {info['name']} - {stats}"))
                 else:
-                    self.console.print(Align.center(f"[{i+1}] Load Slot {i}: [Empty]"))
+                    self.console.print(Align.center(f"[{i+1}] Slot {i}: [Empty]"))
                     
             auto_info = self.save_manager.get_save_info("auto")
             if auto_info:
-                 self.console.print(Align.center(f"[5] Last Auto-Save: Lv{auto_info['level']} @ {auto_info['location_name']} ({auto_info['time']})"))
+                 self.console.print(Align.center(f"[5] Auto-Save: {auto_info['name']} (Lv{auto_info['level']})"))
             
             self.console.print(Align.center("[Q] Quit"))
             
-            # Handle msvcrt.getch() which may return special key codes
             key = msvcrt.getch()
-            # Special keys like arrow keys start with 0xe0 or 0x00, skip them
-            if key in (b'\xe0', b'\x00'):
-                msvcrt.getch()  # Read and discard the second byte
-                continue
-            try:
-                choice = key.decode('utf-8').lower()
-            except UnicodeDecodeError:
-                continue  # Skip invalid input
+            if key in (b'\xe0', b'\x00'): msvcrt.getch(); continue
+            try: choice = key.decode('utf-8').lower()
+            except: continue
+            
             if choice == '1':
-                # New Game
-                self.setup_world() # Reset world
-                self.player = Player("Hero") # Reset player
-                
-                # Starter Items
-                red_potion = self.loader.items.get('item_healing_potion_s')
-                blue_potion = self.loader.items.get('item_mana_potion_s')
-                if red_potion:
-                    for _ in range(10):
-                        self.player.inventory.append(copy.deepcopy(red_potion))
-                if blue_potion:
-                    for _ in range(10):
-                        self.player.inventory.append(copy.deepcopy(blue_potion))
-                        
-                self.game_time = 360
-                break
+                self.new_game()
+                return # Start Game
             elif choice in ['2', '3', '4']:
                 slot = int(choice) - 1
                 if self.save_manager.load_game(slot):
                     self.log(f"[green]Save loaded (Slot {slot})![/]")
-                    break
-                else:
-                    self.log("[red]Empty slot![/]") # Might not see this due to clear, but loop continues
+                    return # Start Game
             elif choice == '5':
                  if self.save_manager.load_game("auto"):
                     self.log(f"[green]Auto-save loaded![/]")
-                    break
+                    return # Start Game
             elif choice == 'q':
                 sys.exit()
+
+    def new_game(self):
+        self.console.clear()
+        self.setup_world()
+        
+        # Name Registration
+        self.console.print("[bold yellow]Enter your character name:[/]")
+        while True:
+            # Use python input for name, but we need to handle rich console context maybe?
+            # Simple input is fine.
+            name = input("> ").strip()
+            if len(name) > 0:
+                break
+        
+        self.player = Player(name)
+        self.log(f"Welcome, {name}!")
+        
+        # Starter Items
+        red_potion = self.loader.items.get('item_healing_potion_s')
+        blue_potion = self.loader.items.get('item_mana_potion_s')
+        if red_potion:
+            for _ in range(5):
+                self.player.inventory.append(copy.deepcopy(red_potion))
+        if blue_potion:
+            for _ in range(5):
+                self.player.inventory.append(copy.deepcopy(blue_potion))
+        
+        self.game_time = 360
+
+    def run(self):
+        # Main Menu
+        self.main_menu()
+                
+        # --- Game Loop ---
                 
         # --- Game Loop ---
         self.running = True
@@ -1756,6 +1805,20 @@ class Game:
             self.handle_help()
             return
             
+        if cmd.startswith('scan'): # scan or scan n
+            args = cmd.split(' ', 1)
+            direction = 'all'
+            if len(args) > 1:
+                direction = args[1][0] # n, s, e, w
+            self.handle_scan(direction)
+            return
+
+        # Scan Shortcuts
+        if cmd in ['sn', 'scan north']: self.handle_scan('n'); return
+        if cmd in ['ss', 'scan south']: self.handle_scan('s'); return
+        if cmd in ['se', 'scan east']: self.handle_scan('e'); return
+        if cmd in ['sw', 'scan west']: self.handle_scan('w'); return
+            
         # Handle manual move commands as fallback
         if cmd in ['n', 'north', 's', 'south', 'e', 'east', 'w', 'west']:
             # Map full words to simple chars
@@ -1776,6 +1839,9 @@ class Game:
             return
 
         # Skill Command
+        if cmd.startswith('train'):
+             self.handle_train(cmd.split(' ', 1)[1] if ' ' in cmd else "")
+             return
 
 
         # Combat Commands
@@ -1929,6 +1995,65 @@ class Game:
         # Debug
         # self.log(f"[dim]Debug: Combat with '{target.name}'[/]")
 
+    def handle_scan(self, direction='all'):
+        curr_room = self.world.get_room(self.player.x, self.player.y)
+        
+        # Calculate Success Chance
+        # (DEX + LUK) * 2
+        dex = self.player.get_stat('dex')
+        luk = self.player.get_stat('luk')
+        score = (dex + luk) * 2
+        
+        self.log(f"[italic]你瞇起眼睛，仔細觀察四周... (偵查值: {score})[/]")
+        
+        # Check adjacent rooms
+        directions = []
+        if direction == 'all':
+             directions = [('n', 0, 1), ('s', 0, -1), ('e', 1, 0), ('w', -1, 0)]
+        else:
+             # Just one direction
+             d_map = {'n':(0,1), 's':(0,-1), 'e':(1,0), 'w':(-1,0)}
+             if direction in d_map:
+                 directions = [(direction, *d_map[direction])]
+        
+        found_any = False
+        for d_name, dx, dy in directions:
+             nx, ny = self.player.x + dx, self.player.y + dy
+             room = self.world.get_room(nx, ny)
+             if room:
+                 # Difficulty: Avg Enemy Level * 10 + 30
+                 difficulty = 30
+                 if room.enemies:
+                     avg_lv = sum(e.level for e in room.enemies) / len(room.enemies)
+                     difficulty += int(avg_lv * 10)
+                 
+                 roll = random.randint(1, 100) + score
+                 # self.log(f"Debug: Room {d_name} Diff {difficulty} vs Roll {roll-score}+{score}={roll}")
+                 
+                 if roll >= difficulty:
+                      found_any = True
+                      info = []
+                      if room.enemies:
+                          info.append(f"敵人: {', '.join([e.name for e in room.enemies])}")
+                      else:
+                          info.append("安全")
+                      
+                      self.log(f"[{d_name.upper()}]: {room.name} - {'; '.join(info)}")
+                 else:
+                      # Fail!
+                      # If critical fail?
+                      # Triggers aggro in that room?
+                      if room.enemies:
+                           self.log(f"[{d_name.upper()}]: 你看不清楚那邊有什麼... [red]你的窺視似乎引起了注意![/]")
+                           for e in room.enemies:
+                               if not e.is_aggressive:
+                                   e.is_aggressive = True
+                           # If they are aggressive, will they move? Not implemented yet.
+                           # But if you move there, they attack immediately.
+         
+        if not found_any and direction == 'all':
+             self.log("你什麼也沒發現。")
+
     def get_damage_description(self, damage, is_crit=False):
         if damage <= 0: return "完全沒有造成傷害 (Miss)"
         if damage < 5: return "輕微地擦傷了 (Grazed)"
@@ -1959,10 +2084,22 @@ class Game:
         
         return random.randint(min_d, max_d)
 
+    def alert_group(self, target):
+        """Alerts other enemies of the same type in the room."""
+        curr_room = self.world.get_room(self.player.x, self.player.y)
+        if not curr_room: return
+        
+        for enemy in curr_room.enemies:
+            if enemy != target and enemy.proto_id == target.proto_id and not enemy.is_aggressive:
+                enemy.is_aggressive = True
+                self.log(f"[bold red]原本平靜的 {enemy.name} 看到了同伴被攻擊，憤怒地加入了戰鬥！[/]")
+
     def perform_attack(self, target, damage_in, flavor_text="攻擊了", color=None):
         if not target.is_alive(): return
-        # print("DEBUG: perform_attack called")
-
+        
+        # Group Aggro
+        self.alert_group(target)
+        
         # Accuracy Check
         hit_chance = self.loader.settings.get('base_hit_chance', 100)
         
@@ -2457,16 +2594,65 @@ class Game:
 
         self.player.inventory.remove(scroll)
         self.log(f"你打開 {scroll.get_display_name()} 朗誦咒文...")
-        self.log("[cyan]光芒閃爍，空間扭曲了！(Teleport)[/]")
         
-        self.player.x = 0
-        self.player.y = 0
-        self.player.visited.add((0, 0))
-        self.update_time(0) # Instant travel? Or takes time? Instant.
-        self.describe_room()
+        # Town Scroll
+        if "town" in scroll.keyword.lower() or "town" in scroll.name.lower() or "回城" in scroll.name:
+            self.log("[cyan]光芒閃爍，空間扭曲了！(Teleport)[/]")
+            self.player.x = 0
+            self.player.y = 0
+            self.player.visited.add((0, 0))
+            self.update_time(0) 
+            self.describe_room()
+            
+        # Stat Reset Scroll
+        elif "reset" in scroll.keyword.lower() or "reset" in scroll.name.lower() or "重置" in scroll.name:
+            self.log("[bold magenta]一股神秘的力量洗滌了你的靈魂... 屬性重置了！[/]")
+            # Calculate Total Points based on Level
+            # Initial (Lv1): 10 each = 50 total? No, base is 10.
+            # Points gained per level: 2 * (Level - 1)
+            total_points = (self.player.level - 1) * 2
+            
+            # Reset Stats to Base 10
+            self.player.str = 10
+            self.player.dex = 10
+            self.player.con = 10
+            self.player.int = 10
+            self.player.luk = 10
+            
+            # Refund Points
+            self.player.stat_points = total_points
+            
+            self.player.recalculate_stats()
+            self.log(f"[green]你的屬性已重置為 10。獲得了 {total_points} 點屬性點。[/]")
+            
+        else:
+             self.log("這卷軸似乎沒有任何效果...?")
 
     def handle_enemy_turn(self, target, curr_room):
         import random
+        
+        # Thief Logic
+        if hasattr(target, 'is_thief') and target.is_thief:
+            # Flee Chance (Low HP)
+            if target.hp < target.max_hp * 0.5 and random.random() < 0.5:
+                 self.log(f"[bold yellow]{target.name} 見勢不妙，腳底抹油溜走了! (Fled)[/]")
+                 curr_room.enemies.remove(target)
+                 return
+                 
+            # Steal (50% chance if not attacking strongly?)
+            # Let's say 40% chance to steal instead of attack
+            if random.random() < 0.4:
+                # Steal Gold
+                steal_amount = random.randint(1, 20) + (target.level * 5)
+                if self.player.gold > 0:
+                    actual_steal = min(self.player.gold, steal_amount)
+                    self.player.gold -= actual_steal
+                    target.stolen_gold += actual_steal
+                    self.log(f"[red]{target.name} 趁你不注意，從你身上偷走了 {actual_steal} 金幣![/]")
+                    return # Skip attack turn
+                else:
+                    self.log(f"[dim]{target.name} 試圖偷竊，但發現你身無分文。[/]")
+
         # Enemy Flee Logic
         # Condition: Elite (HP>=300 or Mutated) AND Not Boss AND Low HP (<20%)
         is_boss = target.proto_id and target.proto_id.startswith('boss_')
@@ -2740,6 +2926,12 @@ class Game:
             self.log("商店指令: list, buy, sell")
         
     def handle_train(self, stat):
+        # 1. Show Status if no arg
+        if not stat:
+            self.log(f"[bold]可用屬性點數: [green]{self.player.stat_points}[/][/]")
+            self.log("使用方法: [cyan]train <stat>[/] (例如: train str, train dex, train con, train int, train luk)")
+            return
+
         if self.player.stat_points <= 0:
             self.log("[red]你沒有剩餘的屬性點數。[/]")
             return
@@ -2985,6 +3177,26 @@ class Game:
             item.current_durability = item.max_durability
             
         self.log(f"[green]修理完成! 花費了 {total_cost} 金幣。[/]")
+
+    def handle_train(self, stat_name):
+        if self.player.stat_points <= 0:
+            self.log("你沒有足夠的升級點數。")
+            return
+            
+        stat_name = stat_name.lower().strip()
+        valid_stats = ['str', 'dex', 'con', 'int', 'luk']
+        
+        if stat_name not in valid_stats:
+            self.log(f"無效的屬性。可用: {', '.join(valid_stats)}")
+            return
+            
+        # Increment Stat
+        current_val = getattr(self.player, stat_name)
+        setattr(self.player, stat_name, current_val + 1)
+        self.player.stat_points -= 1
+        self.player.recalculate_stats()
+        
+        self.log(f"[green]你的 {stat_name.upper()} 提升了! (點數剩餘: {self.player.stat_points})[/]")
 
     def show_equipment(self):
         self.log("[bold]裝備 (Equipment)[/]")
@@ -3289,6 +3501,8 @@ class DataLoader:
                     
                     level = int(row.get('level', 1))
 
+                    is_thief = (row['id'] == 'mob_thief')
+
                     enemy = Enemy(
                         row['name'],
                         row['description'],
@@ -3297,11 +3511,13 @@ class DataLoader:
                         int(row['xp']),
                         int(row['gold']),
                         loot,
-                        id=row['id'],
-                        respawn_time=int(row.get('respawn_time', 30)),
-                        enemy_type=row.get('type', 'beast'),
-                        level=level
+                        row['id'],
+                        int(row['respawn_time']),
+                        row['type'],
+                        level,
+                        is_thief=is_thief
                     )
+
                     
                     # Equip items
                     equip_str = row.get('equipment', '')

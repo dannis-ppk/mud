@@ -32,3 +32,7 @@ help,h,Show help,help
 skill,sk,List skills / Use skill,skill [name]
 skill blind,bl,Blind Enemy (Lower Def),bl <enemy>
 skill kick,kn;kp,Kick Enemy (Dmg + Def Down),kn <enemy>
+scan north,sn,Scan North,sn
+scan south,ss,Scan South,ss
+scan east,se,Scan East,se
+scan west,sw,Scan West,sw

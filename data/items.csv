@@ -43,3 +43,4 @@ armor_amulet_bronze,銅項鍊,armor,100,amulet;necklace,0,0,0,neck,普通的銅�
 armor_amulet_silver,銀項鍊,armor,300,amulet;necklace,0,0,1,neck,精緻的銀項鍊。,Silver Amulet,0,0,100
 armor_ring_iron,鐵戒指,armor,80,ring;iron,0,0,0,finger,普通的鐵戒指。,Iron Ring,0,0,100
 armor_ring_gold,金戒指,armor,250,ring;gold,0,0,1,finger,閃耀的金戒指。,Gold Ring,0,0,100
+item_scroll_reset,屬性重置卷軸,scroll,3000,scroll reset;reset scroll,0,0,0,none,可以重置所有屬性點數的神祕卷軸。,Stat Reset Scroll,0,0,100
