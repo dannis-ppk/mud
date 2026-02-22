@@ -1,0 +1,60 @@
+category,key,value,description
+player,hp_per_con,10,HP gained per unit of Constitution
+player,hp_per_level,10,HP gained per level
+player,hp_base,50,Base HP at level 1
+player,mp_per_int,10,MP gained per unit of Intelligence
+player,mp_per_level,5,MP gained per level
+player,mv_per_dex,10,MV gained per unit of Dexterity
+player,mv_per_con,10,MV gained per unit of Constitution
+player,mv_base,300,Base MV at level 1
+player,stat_points_per_level,2,Stat points gained on level up
+player,xp_multiplier,1.2,Multiplier for next level XP requirement
+player,base_stat,10,Base value for all stats
+player,starting_gold,200,Starting gold for new players
+enemy,scaling_factor,0.05,Scaling factor for enemy stats per player level
+rarity,epic_dmg_min,8,Minimum damage bonus for Epic items
+rarity,epic_dmg_max,12,Maximum damage bonus for Epic items
+rarity,epic_stat_min,3,Minimum stat bonus for Epic items
+rarity,epic_stat_max,5,Maximum stat bonus for Epic items
+rarity,rare_dmg_min,4,Minimum damage bonus for Rare items
+rarity,rare_dmg_max,7,Maximum damage bonus for Rare items
+rarity,rare_stat_min,3,Minimum stat bonus for Rare items
+rarity,rare_stat_max,4,Maximum stat bonus for Rare items
+rarity,fine_dmg_min,1,Minimum damage bonus for Fine items
+rarity,fine_dmg_max,3,Maximum damage bonus for Fine items
+rarity,fine_stat_min,1,Minimum stat bonus for Fine items
+rarity,fine_stat_max,2,Maximum stat bonus for Fine items
+rarity,epic_neck_hp_min,81,Min HP bonus for Epic necklace
+rarity,epic_neck_hp_max,150,Max HP bonus for Epic necklace
+rarity,epic_neck_def_min,3,Min Def bonus for Epic necklace
+rarity,epic_neck_def_max,5,Max Def bonus for Epic necklace
+rarity,rare_neck_hp_min,31,Min HP bonus for Rare necklace
+rarity,rare_neck_hp_max,80,Max HP bonus for Rare necklace
+rarity,rare_neck_def_min,1,Min Def bonus for Rare necklace
+rarity,rare_neck_def_max,2,Max Def bonus for Rare necklace
+rarity,fine_neck_hp_min,10,Min HP bonus for Fine necklace
+rarity,fine_neck_hp_max,30,Max HP bonus for Fine necklace
+rarity,fine_neck_def_min,0,Min Def bonus for Fine necklace
+rarity,fine_neck_def_max,1,Max Def bonus for Fine necklace
+rarity,epic_ring_mp_min,81,Min MP bonus for Epic ring
+rarity,epic_ring_mp_max,150,Max MP bonus for Epic ring
+rarity,rare_ring_mp_min,31,Min MP bonus for Rare ring
+rarity,rare_ring_mp_max,80,Max MP bonus for Rare ring
+rarity,fine_ring_mp_min,10,Min MP bonus for Fine ring
+rarity,fine_ring_mp_max,30,Max MP bonus for Fine ring
+rarity,elite_skill_chance,0.3,Chance for elite enemy to use skill
+rarity,boss_skill_chance,0.5,Chance for boss enemy to use skill
+rarity,normal_skill_chance,0.1,Chance for normal enemy to use skill
+combat,bash_dmg_mult,1.5,Multiplier for Bash skill damage
+combat,kick_dmg_mult,1.2,Multiplier for Kick skill damage
+combat,triple_dmg_mult,3.0,Multiplier for Triple Attack skill damage
+combat,base_hit_chance,100,Base hit chance percentage
+combat,player_min_dmg_base,2,Base minimum player damage
+combat,player_max_dmg_base,5,Base maximum player damage
+combat,player_dmg_per_str,0.5,Damage bonus per point of Strength
+combat,player_hit_per_dex,0.5,Hit chance bonus per point of Dexterity
+combat,enemy_evade_base,10,Base evasion for enemies
+combat,enemy_evade_per_dmg,0.5,Evasion bonus for enemies based on their damage range
+combat,evade_multiplier,0.5,Multiplier for evasion score effectiveness
+combat,attack_interval,1.0,Seconds between auto-attacks
+world,shop_restock_interval,300,Seconds between shop inventory refreshes

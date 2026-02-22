@@ -3,24 +3,28 @@
 This document outlines the high-level goals and future direction for "The Ages" MUD project.
 
 ## Phase 1: Core Mechanics Refinement (Current)
-Focus on stabilizing the base game loop and ensuring data integrity.
+Focus on stabilizing the base game loop, data integrity, and strategic combat depth.
 - [x] Excel-compatible data editing (CSV with BOM)
 - [x] Basic Combat & Stat systems
-- [ ] **Save/Load System**: Allow players to persist their characters.
-- [ ] **Inventory Management**: Robust equipment slots and backpack system.
+- [ ] **Equipment Core**: Implementation of slots (Weapon, Armor, Accessory) and Durability (耐久度) system.
+- [ ] **Strategic Combat**: 
+    - Disarm (打落), Sunder (破甲), and Snatch (搶奪) mechanics.
+    - Status effects: Blind (致盲) and Knockdown (擊倒/站立機制).
+- [ ] **Save/Load & Persistence**: Character data and Boss-class inventory persistence (stolen gear tracking).
 
 ## Phase 2: Content Expansion
-Expanding the world and variety of gameplay.
-- **New Zones**: Create distinct areas with unique enemies and loot.
-- **Quest System**: Simple fetch/kill quests to guide player progression.
-- **Class System**: Differentiate playstyles (Warrior, Mage, Rogue) with unique skill trees.
+Expanding the world and variety of gameplay with high-risk, high-reward systems.
+- **Elite & Boss Variety**: Introduction of Variant, Elite, and Boss-class enemies with "Easter Egg" bags.
+- **The Loot Ecosystem**: Unique/World-drop items (Unique Purple Gear) with global uniqueness tracking.
+- **Town Services**: Gacha (抽獎) and Reforge (重洗詞綴) mechanics in the Village Center.
+- **Tactical Stealth**: Sneak-based scanning (sc) for priority targets and enemy bag inspection.
 
 ## Phase 3: Technical Enhancements
-- **Multiplayer/Network Support**: Allow multiple players to connect via Telnet or WebSocket.
-- **GUI Companion App**: A graphical interface to visualize the map and stats (possibly using the existing prototype ideas).
-- **Scripting Engine**: Allow for more complex room interactions and NPC behaviors beyond simple data files.
+- **Multiplayer/Network Support**: Crucial for real-time "Snatch" windows and command competition.
+- **Scripting Engine**: Advanced AI for NPCs to prioritize picking up dropped gear or using recovery skills.
+- **GUI Companion App**: Visual indicators for equipment durability and rarity glows.
 
 ## Phase 4: Polish & Release
-- **Tutorial**: Interactive guide for new players.
-- **Balancing**: Fine-tune damage formulas and economy.
-- **Packaging**: Create executable builds for easy distribution.
+- **Tutorial**: Interactive guide covering Disarm, Stand, and Repair mechanics.
+- **Balancing**: Fine-tuning drop rates, affix weights, and luck-based protection.
+- **Packaging**: Create executable builds.

@@ -1,6 +1,8 @@
 ﻿id,name,cost_type,cost_value,damage_formula,effect,description,req_level,type
-blind,致盲 (Blind),mv,5,0,def_down,Blinds the enemy reducing defense.,1,active
-kick,踢擊 (Kick),mv,5,base*1.1,stun,Kicks the enemy with a chance to stun.,1,active
+blind,致盲 (Blind),mv,5,0,blind,Blinds the enemy reducing accuracy and defense.,1,active
+kick,踢擊 (Kick),mv,5,base*1.1,knockdown,Kicks the enemy causing knockdown.,1,active
+disarm,打落 (Disarm),mv,10,0,disarm,Attempts to disarm the target weapon.,1,active
+sunder,破甲 (Sunder),mv,8,base*0.5,sunder,Strikes equipment to damage durability.,1,active
 power,強力攻擊 (Power),mv,15,base*1.5,none,A powerful strike.,1,active
 berserk,狂暴攻擊 (Berserk),mv,30,base*3.0,none,A reckless attack with high damage but low accuracy.,1,active
 heal,治療術 (Heal),mp,10,0,heal_30,Restores health.,3,spell
@@ -13,3 +15,4 @@ bite,撕咬 (Bite),none,0,base*1.2,none,Bites the target.,1,enemy
 slash,揮砍 (Slash),none,0,base*1.2,none,Slashes the target.,1,enemy
 smash,重擊 (Smash),none,0,base*1.5,none,Smashes the target.,1,enemy
 triple_attack,三連擊 (Triple),none,0,base*3.0,none,Strikes three times.,1,enemy
+basic_attack,普通攻擊 (Attack),mv,2,base,none,Basic attack.,1,active

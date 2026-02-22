@@ -19,3 +19,23 @@ mob_ent,樹精幼苗 (Treant Sapling),看起來像是一棵會走動的樹苗，
 boss_bear_king,熊王 (Bear King),一隻巨大的熊，身上掛著銀色的項鍊。,800,20,30,500,200,armor_amulet_silver|1.0|Epic,1,300,,beast,10
 boss_orc_warlord,半獸人督軍 (Orc Warlord),全副武裝的半獸人首領，手指上戴著閃耀的金戒指。,1000,25,35,600,300,armor_ring_gold|1.0|Epic,1,300,weapon_greatsword;armor_plate,humanoid,35
 mob_thief,小偷 (Thief),身手矯健的小偷，眼神閃爍不定。,120,5,15,80,50,,0.0,45,weapon_dagger,humanoid,5
+mob_wasp,å·¨å?é»è? (Giant Wasp),å°¾é¨å¸¶è??æ??ºé??é??ï?é£è??åº¦æ¥µå¿«??45,20,6,10,5,item_stinger,0.4,30,,beast,2,
+mob_hyena,?é?é¬?? (Hyena),?ç¾¤çµé??æ?é£èï??¼åºä»¤äººä¸å??ç??²ã?110,45,9,14,15,item_teeth,0.5,45,,beast,5,
+mob_basilisk,?³å??¥è´ (Basilisk),?®è??ç??å??°å?æ¾¤ç??¥è´ï¼è?ç·ä»¤äººæ??¼ã?350,250,22,32,90,item_eye,0.3,60,,beast,9,
+mob_panther,?å½±é»è±¹ (Shadow Panther),?±å¿?¼é°å½±ä¸­?åª?çµ?ï??ä??¡è²?¡æ¯??220,180,18,26,60,item_pelt,0.6,60,,beast,12,
+mob_rhino,?µç²???(Iron Rhino),?æ?ä¸å±¤å?å¯¦å??¼éµ?®è??å·¨?¸ï?è¡é?å¨å?é©äºº??850,450,35,50,120,item_horn,0.7,90,,beast,15,
+mob_griffin,?é·² (Griffin),?ç??é·¹?ç©ºä¸­é¸ä¸»ï?å®è­·?å±±å·ç?å¯¶è???1200,800,45,65,400,item_feather,0.5,180,,beast,20,
+mob_manticore,?å°¾??(Manticore),?æ??èº«?è?? ç???è?å­å°¾å·´ç??´å½æ··å?é«ã?2500,2000,70,100,1000,item_poison_gland,0.8,300,,beast,30,
+mob_owlbear,é´ç? (Owlbear),çµå?äºè??­é·¹?æ??³è??ç??»å?ï¼æ§æ ¼æ¥µå¶?´è???650,350,28,40,150,item_claw,0.6,90,,beast,14,
+mob_warg,åº§ç¼ (Warg),å·¨å¤§ä¸å·?é?åº¦æº?§ç??¼ï?å¸¸è¢«?ªæ¡?ç©é¨ä???300,120,15,25,40,item_fur,0.5,60,,beast,8,
+boss_hydra,ä¹é ­??(Hydra),æ¯é??­é½?¨å´?æ?æ¶²ç?å¤é ­å·¨è?ï¼å·?å¼·å¤§ç??ç??½å???6000,7000,80,120,4000,weapon_hydra_bow,1,600,,beast,45,
+mob_scout,?¥å?(Scout),è¡å??æ·?åµå¯åµï¼æ??·ä½¿?¨ç­å¼é?ç¨é¨·?¾ã?140,60,7,12,30,weapon_bow,0.3,45,weapon_bow;armor_cloth,humanoid,6,
+mob_cultist,?ªæ?å¾?(Cultist),ç©¿è??å¸½?·è??ç??ä¿¡å¾ï??¸è?ä»¤äººä¸å??å?èªã?180,90,12,20,40,item_scroll,0.4,45,armor_robe,humanoid,8,
+mob_knight,å¢®è½é¨å£« (Fallen Knight),?æ?èªè??é?è£æ°å£«ï??ç²ä¸ä?æ»¿ä??½è·¡?è?æ¼¬ã?550,280,25,38,120,weapon_mace,0.25,90,weapon_mace;armor_plate,humanoid,16,
+mob_mage,?ç?æ³å¸« (Renegade Mage),?æ§ä¸ç©©å®å?ç´ ç?é­æ?å¸«ï??æ¡?ç?å¾®å??æ??ã?320,350,30,50,150,weapon_staff,0.2,90,weapon_staff;armor_robe,humanoid,20,
+mob_assassin,?æ®º??(Assassin),ç²¾éæ??¥è??å¨?æ®º?ï?å°æ»?µäºº?å¼±é»ã?400,500,40,60,300,weapon_poison_dagger,0.15,120,weapon_dagger;armor_leather,humanoid,25,
+mob_berserker,?æ°å£?(Berserker),?¡è??²ç¦¦?åªæ±æ®º?®ç??°å£«ï¼æ®?è?å·¨å¤§?é??å???900,750,55,85,250,weapon_claymore,0.3,120,weapon_claymore;armor_hide,humanoid,22,
+mob_monk,?¦ä¿®?§ä¾¶ (Corrupted Monk),å°è?é«é??è³æ¥µé??æ­¦è¡å®¶ï¼æ³?­æ??¼éµ?ç¡¬??450,400,35,45,100,item_beads,0.5,90,armor_cloth,humanoid,18,
+mob_necromancer,æ­»é?æ³å¸« (Necromancer),å¾å??¼å??°ç?ç¦å?å­¸èï??½å¬?æ­»?çº?¶æ??ã?800,1200,45,70,600,item_skull_staff,0.2,180,weapon_staff;armor_robe,humanoid,28,
+boss_high_priest,å¤§ç¥­??(High Priest),ä¿¡ä»°?ªç??å??é?è¢ï??½æ½å±å¼·å¤§ç?ç¥è?æ¯æ»è???4500,6000,75,110,3500,armor_holy_pendant,1,300,weapon_scepter;armor_robe,humanoid,40,
+boss_warlord_champion,?°ç?? è? (Champion of War),?°ç¡ä¸å??å?è»ï??æ??²å?å¯¶ç³?å·¨?§ï?å¨å??å?è¶³ã?8500,10000,90,140,5000,weapon_champion_axe,1,600,weapon_greataxe;armor_dragon_plate,humanoid,50,

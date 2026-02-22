@@ -61,8 +61,9 @@ class TestSkillsAndEquipment(unittest.TestCase):
              self.game.handle_skill("blind goblin")
              
              # Check effect
-             self.assertIn('def_down', target.debuffs)
-             self.assertEqual(target.debuffs['def_down'], 3)
+             self.assertIn('blind', target.debuffs)
+             # Set to 3, but resolve_turn ticks it down by 1
+             self.assertEqual(target.debuffs['blind'], 2)
 
     def test_player_skill_kick(self):
         target = Enemy("Goblin", "Desc", 100, (5, 10), 10, 10)
@@ -79,7 +80,7 @@ class TestSkillsAndEquipment(unittest.TestCase):
              # Check damage (HP should be lower)
              self.assertTrue(target.hp < original_hp)
              # Check debuff
-             self.assertIn('def_down', target.debuffs)
+             self.assertIn('knockdown', target.debuffs)
 
     def test_enemy_defense_calculation(self):
         target = Enemy("Goblin", "Desc", 100, (5, 10), 10, 10)

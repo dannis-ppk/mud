@@ -24,6 +24,34 @@ from rich.align import Align
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
+class BalanceManager:
+    """Manages game balance parameters loaded from CSV."""
+    def __init__(self, filepath=None):
+        self.params = {} # (category, key) -> value
+        if filepath and os.path.exists(filepath):
+            self.load(filepath)
+
+    def load(self, filepath):
+        try:
+            with open(filepath, mode='r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    category = row['category'].strip()
+                    key = row['key'].strip()
+                    try:
+                        # Convert to float if possible, then int if it's a whole number
+                        val = float(row['value'].strip())
+                        if val.is_integer():
+                            val = int(val)
+                    except ValueError:
+                        val = row['value'].strip()
+                    self.params[(category, key)] = val
+        except Exception as e:
+            print(f"Error loading balance.csv: {e}")
+
+    def get(self, category, key, default=None):
+        return self.params.get((category, key), default)
+
 class Color:
     # Rich Markup placeholders
     RESET = "[/]"
@@ -42,12 +70,21 @@ class Color:
         return f"{color}{text}[/]"
 
 class Enemy:
-    def __init__(self, name, description, hp, damage_range, xp_reward, gold_reward, loot_table=None, id=None, respawn_time=30, enemy_type="beast", level=1, is_thief=False):
+    def __init__(self, name, description, hp, damage_range, xp_reward, gold_reward, loot_table=None, id=None, respawn_time=30, enemy_type="beast", level=1, is_thief=False, balance_manager=None):
+        self.balance = balance_manager
         self.id = id
         self.respawn_time = respawn_time
         self.name = name
         self.description = description
+        self.base_max_hp = hp # Store original
+        self.base_damage_range = damage_range
+        self.base_xp_reward = xp_reward
+        self.base_gold_reward = gold_reward
+        
+        self.last_attack_time = 0.0 # Ready to attack
         self.max_hp = hp
+        self.base_max_hp = hp
+        self.base_damage_range = damage_range
         self.hp = hp
         self.damage_range = damage_range  # (min, max)
         self.xp_reward = xp_reward
@@ -91,13 +128,18 @@ class Enemy:
              
         self.is_thief = is_thief
         self.stolen_gold = 0
+        self.inventory = [] # Items picked up / stolen (for Boss persistence)
 
     def scale_to_player(self, player_level):
         """Scales enemy stats based on player level."""
         # Logic: Effective Level = max(BaseLevel, PlayerLevel)
         if player_level <= 1: return
         
-        scale_factor = 1.0 + (player_level - 1) * 0.05
+        scaling_factor = 0.05
+        if hasattr(self, 'balance') and self.balance:
+            scaling_factor = self.balance.get('enemy', 'scaling_factor', 0.05)
+
+        scale_factor = 1.0 + (player_level - 1) * scaling_factor
         
         self.max_hp = int(self.base_max_hp * scale_factor)
         self.hp = self.max_hp # Heal to full
@@ -127,10 +169,27 @@ class Enemy:
                  defense += item.defense
         
         # Debuff Modification
-        if 'def_down' in self.debuffs:
+        if self.has_status('def_down'):
             defense -= 5 # Lower defense by 5
+        if self.has_status('blind'):
+            defense -= 3 # Blind also slightly reduces defense
             
         return max(0, defense)
+
+    def has_status(self, status_name):
+        """Check if enemy has an active status effect (致盲/擊倒等)"""
+        return self.debuffs.get(status_name, 0) > 0
+
+    def tick_debuffs(self):
+        """Decrement all debuff timers. Remove expired ones. Auto-stand from knockdown."""
+        expired = []
+        for key in list(self.debuffs.keys()):
+            self.debuffs[key] -= 1
+            if self.debuffs[key] <= 0:
+                expired.append(key)
+        for key in expired:
+            del self.debuffs[key]
+        return expired # Return list of expired debuffs for logging
         
     def use_skill(self):
         import random
@@ -140,8 +199,13 @@ class Enemy:
         is_elite = self.max_hp >= 300 or is_mutated
         
         chance = 0.1
-        if is_elite: chance = 0.3
-        if is_boss: chance = 0.5
+        if self.balance:
+            chance = self.balance.get('rarity', 'normal_skill_chance', 0.1)
+            if is_elite: chance = self.balance.get('rarity', 'elite_skill_chance', 0.3)
+            if is_boss: chance = self.balance.get('rarity', 'boss_skill_chance', 0.5)
+        else:
+            if is_elite: chance = 0.3
+            if is_boss: chance = 0.5
         
         if self.skills and random.random() < chance:
              skill = random.choice(self.skills)
@@ -220,7 +284,7 @@ class Enemy:
 
 
 class Item:
-    def __init__(self, name, description, value, keyword, rarity="Common", color="white", bonuses=None, english_name="", max_durability=0):
+    def __init__(self, name, description, value, keyword, rarity="Common", color="white", bonuses=None, english_name="", max_durability=0, set_id="", is_unique=False):
         self.name = name
         self.description = description
         self.value = value
@@ -228,12 +292,14 @@ class Item:
         self.english_name = english_name
         self.drop_time = None 
         
-        self.rarity = rarity # Common, Fine, Rare
-        self.color = color   # white, green, blue
+        self.rarity = rarity # Common, Fine, Rare, Epic, Unique
+        self.color = color   # white, green, blue, magenta
         self.bonuses = bonuses if bonuses else {}
         
         self.max_durability = max_durability
         self.current_durability = max_durability # Default to full
+        self.set_id = set_id       # Set bonus group ID (套裝 ID)
+        self.is_unique = is_unique # Only one can exist globally (唯一性)
 
     def get_display_name(self):
         if self.english_name:
@@ -252,7 +318,9 @@ class Item:
             "color": self.color,
             "bonuses": self.bonuses if self.bonuses else {},
             "max_durability": self.max_durability,
-            "current_durability": self.current_durability
+            "current_durability": self.current_durability,
+            "set_id": self.set_id,
+            "is_unique": self.is_unique
         }
     
     @staticmethod
@@ -263,18 +331,21 @@ class Item:
                           data.get('rarity', "Common"), data.get('color', "white"), 
                           data.get('bonuses', {}), data.get('english_name', ""),
                           hands=data.get('hands', 1), accuracy=data.get('accuracy', 100),
-                          max_durability=data.get('max_durability', 0))
+                          max_durability=data.get('max_durability', 0),
+                          set_id=data.get('set_id', ""), is_unique=data.get('is_unique', False))
         elif data['type'] == 'armor':
             item = Armor(data['name'], data['description'], data['value'], data['keyword'], 
                          data['defense'], data['slot'], 
                          data.get('rarity', "Common"), data.get('color', "white"), 
                          data.get('bonuses', {}), data.get('english_name', ""),
-                         max_durability=data.get('max_durability', 0))
+                         max_durability=data.get('max_durability', 0),
+                         set_id=data.get('set_id', ""), is_unique=data.get('is_unique', False))
         else:
             item = Item(data['name'], data['description'], data['value'], data['keyword'], 
                         data.get('rarity', "Common"), data.get('color', "white"), 
                         data.get('bonuses', {}), data.get('english_name', ""),
-                        max_durability=data.get('max_durability', 0))
+                        max_durability=data.get('max_durability', 0),
+                        set_id=data.get('set_id', ""), is_unique=data.get('is_unique', False))
         
         if 'max_durability' not in data or data['max_durability'] == 0:
             # Legacy Save Fix: Default to 100 if not present
@@ -289,8 +360,8 @@ class Item:
         return item
 
 class Weapon(Item):
-    def __init__(self, name, description, value, keyword, min_dmg, max_dmg, slot='r_hand', rarity="Common", color="white", bonuses=None, english_name="", hands=1, accuracy=100, max_durability=100):
-        super().__init__(name, description, value, keyword, rarity, color, bonuses, english_name, max_durability)
+    def __init__(self, name, description, value, keyword, min_dmg, max_dmg, slot='r_hand', rarity="Common", color="white", bonuses=None, english_name="", hands=1, accuracy=100, max_durability=100, set_id="", is_unique=False):
+        super().__init__(name, description, value, keyword, rarity, color, bonuses, english_name, max_durability, set_id, is_unique)
         self.min_dmg = min_dmg
         self.max_dmg = max_dmg
         self.slot = slot
@@ -310,13 +381,15 @@ class Weapon(Item):
             "type": "weapon",
             "min_dmg": self.min_dmg - self.bonuses.get('dmg', 0), # Store raw base stats to avoid double application
             "max_dmg": self.max_dmg - self.bonuses.get('dmg', 0),
-            "slot": self.slot
+            "slot": self.slot,
+            "hands": self.hands,
+            "accuracy": self.accuracy - self.bonuses.get('acc', 0)
         })
         return data
 
 class Armor(Item):
-    def __init__(self, name, description, value, keyword, defense, slot='body', rarity="Common", color="white", bonuses=None, english_name="", max_durability=100):
-        super().__init__(name, description, value, keyword, rarity, color, bonuses, english_name, max_durability)
+    def __init__(self, name, description, value, keyword, defense, slot='body', rarity="Common", color="white", bonuses=None, english_name="", max_durability=100, set_id="", is_unique=False):
+        super().__init__(name, description, value, keyword, rarity, color, bonuses, english_name, max_durability, set_id, is_unique)
         self.defense = defense
         self.slot = slot
         
@@ -335,12 +408,13 @@ class Armor(Item):
 
 class LootGenerator:
     @staticmethod
-    def generate(item_proto, force_rarity=None):
+    def generate(item_proto, force_rarity=None, balance_manager=None):
         """Generates a new item instance based on prototype with chance for rarity upgrade."""
         import copy
         import random
         
         new_item = copy.deepcopy(item_proto)
+        b = balance_manager
         
         # Skip rarity generation for consumables (they don't benefit from stat bonuses)
         if isinstance(new_item, Item) and not isinstance(new_item, (Weapon, Armor)):
@@ -375,7 +449,9 @@ class LootGenerator:
             
             if isinstance(new_item, Weapon):
                 # Epic Dmg: +8 ~ +12
-                bonus_dmg = random.randint(8, 12)
+                min_b = b.get('rarity', 'epic_dmg_min', 8) if b else 8
+                max_b = b.get('rarity', 'epic_dmg_max', 12) if b else 12
+                bonus_dmg = random.randint(min_b, max_b)
                 new_item.bonuses['dmg'] = bonus_dmg
                 new_item.min_dmg += bonus_dmg
                 new_item.max_dmg += bonus_dmg
@@ -383,37 +459,51 @@ class LootGenerator:
                 
                 # Add Stat Bonus (Two Stats)
                 # Epic Stat: +3 ~ +5 (x2)
+                min_s = b.get('rarity', 'epic_stat_min', 3) if b else 3
+                max_s = b.get('rarity', 'epic_stat_max', 5) if b else 5
                 stats = random.sample(['str', 'dex', 'luk', 'con'], 2)
                 for stat in stats:
-                    val = random.randint(3, 5)
+                    val = random.randint(min_s, max_s)
                     new_item.bonuses[stat] = val
                     new_item.description += f" ({stat.upper()} +{val})"
                 
             elif isinstance(new_item, Armor):
                 # Epic Def: +6 ~ +10
-                bonus_def = random.randint(6, 10)
+                min_b = b.get('rarity', 'epic_def_min', 6) if b else 6
+                max_b = b.get('rarity', 'epic_def_max', 10) if b else 10
+                bonus_def = random.randint(min_b, max_b)
                 new_item.bonuses['def'] = bonus_def
                 new_item.defense += bonus_def
                 new_item.description += f" (防禦 +{bonus_def})"
                 
                 # Epic Stat: +3 ~ +5 (x2)
+                min_s = b.get('rarity', 'epic_stat_min', 3) if b else 3
+                max_s = b.get('rarity', 'epic_stat_max', 5) if b else 5
                 stats = random.sample(['con', 'dex', 'int', 'str'], 2)
                 for stat in stats:
-                    val = random.randint(3, 5)
+                    val = random.randint(min_s, max_s)
                     new_item.bonuses[stat] = val
                     new_item.description += f" ({stat.upper()} +{val})"
             
             # Necklace/Ring Logic (Epic)
             if new_item.slot == 'neck':
-                bonus_hp = random.randint(81, 150)
-                bonus_def = random.randint(3, 5)
+                hp_min = b.get('rarity', 'epic_neck_hp_min', 81) if b else 81
+                hp_max = b.get('rarity', 'epic_neck_hp_max', 150) if b else 150
+                def_min = b.get('rarity', 'epic_neck_def_min', 3) if b else 3
+                def_max = b.get('rarity', 'epic_neck_def_max', 5) if b else 5
+                bonus_hp = random.randint(hp_min, hp_max)
+                bonus_def = random.randint(def_min, def_max)
                 new_item.bonuses['hp'] = new_item.bonuses.get('hp', 0) + bonus_hp
                 new_item.bonuses['def'] = new_item.bonuses.get('def', 0) + bonus_def
                 if hasattr(new_item, 'defense'): new_item.defense += bonus_def
                 new_item.description += f" (HP +{bonus_hp}, Def +{bonus_def})"
             elif new_item.slot == 'finger':
-                bonus_mp = random.randint(81, 150)
-                bonus_def = random.randint(3, 5)
+                mp_min = b.get('rarity', 'epic_ring_mp_min', 81) if b else 81
+                mp_max = b.get('rarity', 'epic_ring_mp_max', 150) if b else 150
+                def_min = b.get('rarity', 'epic_ring_def_min', 3) if b else 3
+                def_max = b.get('rarity', 'epic_ring_def_max', 5) if b else 5
+                bonus_mp = random.randint(mp_min, mp_max)
+                bonus_def = random.randint(def_min, def_max)
                 new_item.bonuses['mp'] = new_item.bonuses.get('mp', 0) + bonus_mp
                 new_item.bonuses['def'] = new_item.bonuses.get('def', 0) + bonus_def
                 if hasattr(new_item, 'defense'): new_item.defense += bonus_def
@@ -427,7 +517,9 @@ class LootGenerator:
             
             if isinstance(new_item, Weapon):
                 # Rare Dmg: +4 ~ +7
-                bonus_dmg = random.randint(4, 7)
+                min_b = b.get('rarity', 'rare_dmg_min', 4) if b else 4
+                max_b = b.get('rarity', 'rare_dmg_max', 7) if b else 7
+                bonus_dmg = random.randint(min_b, max_b)
                 new_item.bonuses['dmg'] = bonus_dmg
                 new_item.min_dmg += bonus_dmg
                 new_item.max_dmg += bonus_dmg
@@ -435,37 +527,49 @@ class LootGenerator:
                 
                 # Add Stat Bonus
                 # Rare Stat: +3 ~ +4
+                min_s = b.get('rarity', 'rare_stat_min', 3) if b else 3
+                max_s = b.get('rarity', 'rare_stat_max', 4) if b else 4
                 stat = random.choice(['str', 'dex', 'luk'])
-                val = random.randint(3, 4)
+                val = random.randint(min_s, max_s)
                 new_item.bonuses[stat] = val
                 new_item.description += f" ({stat.upper()} +{val})"
                 
             elif isinstance(new_item, Armor):
                 # Rare Def: +3 ~ +5
-                bonus_def = random.randint(3, 5)
+                min_b = b.get('rarity', 'rare_def_min', 3) if b else 3
+                max_b = b.get('rarity', 'rare_def_max', 5) if b else 5
+                bonus_def = random.randint(min_b, max_b)
                 new_item.bonuses['def'] = bonus_def
                 new_item.defense += bonus_def
                 new_item.description += f" (防禦 +{bonus_def})"
                 
                 # Add Stat Bonus
+                min_s = b.get('rarity', 'rare_stat_min', 3) if b else 3
+                max_s = b.get('rarity', 'rare_stat_max', 4) if b else 4
                 stat = random.choice(['con', 'dex', 'int'])
-                val = random.randint(3, 4)
+                val = random.randint(min_s, max_s)
                 new_item.bonuses[stat] = val
                 new_item.description += f" ({stat.upper()} +{val})"
 
             # Necklace/Ring Logic (Rare)
             if new_item.slot == 'neck':
-                bonus_hp = random.randint(31, 80)
-                # Rare Neck Def: +1 ~ +2
-                bonus_def = random.randint(1, 2)
+                hp_min = b.get('rarity', 'rare_neck_hp_min', 31) if b else 31
+                hp_max = b.get('rarity', 'rare_neck_hp_max', 80) if b else 80
+                def_min = b.get('rarity', 'rare_neck_def_min', 1) if b else 1
+                def_max = b.get('rarity', 'rare_neck_def_max', 2) if b else 2
+                bonus_hp = random.randint(hp_min, hp_max)
+                bonus_def = random.randint(def_min, def_max)
                 new_item.bonuses['hp'] = new_item.bonuses.get('hp', 0) + bonus_hp
                 new_item.bonuses['def'] = new_item.bonuses.get('def', 0) + bonus_def
                 if hasattr(new_item, 'defense'): new_item.defense += bonus_def
                 new_item.description += f" (HP +{bonus_hp}, Def +{bonus_def})"
             elif new_item.slot == 'finger':
-                bonus_mp = random.randint(31, 80)
-                # Rare Ring Def: +1 ~ +2
-                bonus_def = random.randint(1, 2)
+                mp_min = b.get('rarity', 'rare_ring_mp_min', 31) if b else 31
+                mp_max = b.get('rarity', 'rare_ring_mp_max', 80) if b else 80
+                def_min = b.get('rarity', 'rare_ring_def_min', 1) if b else 1
+                def_max = b.get('rarity', 'rare_ring_def_max', 2) if b else 2
+                bonus_mp = random.randint(mp_min, mp_max)
+                bonus_def = random.randint(def_min, def_max)
                 new_item.bonuses['mp'] = new_item.bonuses.get('mp', 0) + bonus_mp
                 new_item.bonuses['def'] = new_item.bonuses.get('def', 0) + bonus_def
                 if hasattr(new_item, 'defense'): new_item.defense += bonus_def
@@ -480,7 +584,9 @@ class LootGenerator:
             
             if isinstance(new_item, Weapon):
                 # Fine Dmg: +1 ~ +3
-                bonus_dmg = random.randint(1, 3)
+                min_b = b.get('rarity', 'fine_dmg_min', 1) if b else 1
+                max_b = b.get('rarity', 'fine_dmg_max', 3) if b else 3
+                bonus_dmg = random.randint(min_b, max_b)
                 new_item.bonuses['dmg'] = bonus_dmg
                 new_item.min_dmg += bonus_dmg
                 new_item.max_dmg += bonus_dmg
@@ -488,29 +594,38 @@ class LootGenerator:
                 
                 # Add Stat Bonus
                 # Fine Stat: +1 ~ +2
+                min_s = b.get('rarity', 'fine_stat_min', 1) if b else 1
+                max_s = b.get('rarity', 'fine_stat_max', 2) if b else 2
                 stat = random.choice(['str', 'dex'])
-                val = random.randint(1, 2)
+                val = random.randint(min_s, max_s)
                 new_item.bonuses[stat] = val
                 new_item.description += f" ({stat.upper()} +{val})"
                 
             elif isinstance(new_item, Armor):
                 # Fine Def: +1 ~ +2
-                bonus_def = random.randint(1, 2)
+                min_b = b.get('rarity', 'fine_def_min', 1) if b else 1
+                max_b = b.get('rarity', 'fine_def_max', 2) if b else 2
+                bonus_def = random.randint(min_b, max_b)
                 new_item.bonuses['def'] = bonus_def
                 new_item.defense += bonus_def
                 new_item.description += f" (防禦 +{bonus_def})"
                 
                 # Add Stat Bonus
+                min_s = b.get('rarity', 'fine_stat_min', 1) if b else 1
+                max_s = b.get('rarity', 'fine_stat_max', 2) if b else 2
                 stat = random.choice(['con', 'dex'])
-                val = random.randint(1, 2)
+                val = random.randint(min_s, max_s)
                 new_item.bonuses[stat] = val
                 new_item.description += f" ({stat.upper()} +{val})"
 
             # Necklace/Ring Logic (Fine)
             if new_item.slot == 'neck':
-                bonus_hp = random.randint(10, 30)
-                # Fine Neck Def: +0 ~ +1
-                bonus_def = random.randint(0, 1)
+                hp_min = b.get('rarity', 'fine_neck_hp_min', 10) if b else 10
+                hp_max = b.get('rarity', 'fine_neck_hp_max', 30) if b else 30
+                def_min = b.get('rarity', 'fine_neck_def_min', 0) if b else 0
+                def_max = b.get('rarity', 'fine_neck_def_max', 1) if b else 1
+                bonus_hp = random.randint(hp_min, hp_max)
+                bonus_def = random.randint(def_min, def_max)
                 new_item.bonuses['hp'] = new_item.bonuses.get('hp', 0) + bonus_hp
                 new_item.bonuses['def'] = new_item.bonuses.get('def', 0) + bonus_def
                 if hasattr(new_item, 'defense'): new_item.defense += bonus_def
@@ -519,25 +634,30 @@ class LootGenerator:
                 else:
                     new_item.description += f" (HP +{bonus_hp})"
             elif new_item.slot == 'finger':
-                bonus_mp = random.randint(10, 30)
-                # Fine Ring Def: +0 ~ +1
-                bonus_def = random.randint(0, 1)
+                mp_min = b.get('rarity', 'fine_ring_mp_min', 10) if b else 10
+                mp_max = b.get('rarity', 'fine_ring_mp_max', 30) if b else 30
+                def_min = b.get('rarity', 'fine_ring_def_min', 0) if b else 0
+                def_max = b.get('rarity', 'fine_ring_def_max', 1) if b else 1
+                bonus_mp = random.randint(mp_min, mp_max)
+                bonus_def = random.randint(def_min, def_max)
                 new_item.bonuses['mp'] = new_item.bonuses.get('mp', 0) + bonus_mp
                 new_item.bonuses['def'] = new_item.bonuses.get('def', 0) + bonus_def
                 if hasattr(new_item, 'defense'): new_item.defense += bonus_def
                 if bonus_def > 0:
                     new_item.description += f" (MP +{bonus_mp}, Def +{bonus_def})"
                 else:
-                     new_item.description += f" (MP +{bonus_mp})"
-                
+                    new_item.description += f" (MP +{bonus_mp})"
         return new_item
 
 class Shop:
-    def __init__(self, name, description, prototypes):
+    def __init__(self, name, description, prototypes, balance_manager=None):
+        self.balance = balance_manager
         self.name = name
         self.description = description
         self.prototypes = prototypes  # List of Item prototypes
         self.inventory = []
+        import time
+        self.last_restock_time = time.time()
         self.restock()
 
     def restock(self):
@@ -561,7 +681,7 @@ class Shop:
              equip_protos = [p for p in self.prototypes if isinstance(p, (Weapon, Armor))]
              if equip_protos:
                  proto = random.choice(equip_protos)
-                 new_item = LootGenerator.generate(proto, force_rarity="Epic")
+                 new_item = LootGenerator.generate(proto, force_rarity="Epic", balance_manager=self.balance)
                  self.inventory.append(new_item)
                  counts["Epic"] += 1
         
@@ -572,7 +692,7 @@ class Shop:
             if not equip_protos: break
             
             proto = random.choice(equip_protos)
-            new_item = LootGenerator.generate(proto, force_rarity="Rare")
+            new_item = LootGenerator.generate(proto, force_rarity="Rare", balance_manager=self.balance)
             self.inventory.append(new_item)
             counts["Rare"] += 1
             
@@ -582,7 +702,7 @@ class Shop:
             if not equip_protos: break
             
             proto = random.choice(equip_protos)
-            new_item = LootGenerator.generate(proto, force_rarity="Fine")
+            new_item = LootGenerator.generate(proto, force_rarity="Fine", balance_manager=self.balance)
             self.inventory.append(new_item)
             counts["Fine"] += 1
             
@@ -591,7 +711,7 @@ class Shop:
             if not self.prototypes: break
             proto = random.choice(self.prototypes) # Any item
             # Common is default
-            new_item = LootGenerator.generate(proto, force_rarity="Common") 
+            new_item = LootGenerator.generate(proto, force_rarity="Common", balance_manager=self.balance) 
             self.inventory.append(new_item)
             counts["Common"] += 1
             
@@ -599,10 +719,11 @@ class Shop:
         self.inventory.sort(key=lambda x: x.value)
 
 class Room:
-    def __init__(self, name, description, symbol=' . '):
+    def __init__(self, name, description, symbol=' . ', zone='none'):
         self.name = name
         self.description = description
         self.symbol = symbol
+        self.zone = zone
         self.exits = {}  # {'n': (x, y), ...}
         self.enemies = []  # List of Enemy objects
         self.items = [] # List of Item objects
@@ -625,7 +746,8 @@ class World:
         return self.grid.get((x, y))
 
 class Player:
-    def __init__(self, name, start_x=0, start_y=0):
+    def __init__(self, name, start_x=0, start_y=0, balance_manager=None):
+        self.balance = balance_manager
         self.name = name
         self.x = start_x
         self.y = start_y
@@ -672,14 +794,21 @@ class Player:
 
         self.xp = 0
         self.next_level_xp = 1000
+        self.last_attack_time = 0.0 # Ready to attack
         self.gold = 200 # Starting gold
         self.stat_points = 0 # New: Points to allocate
         
         # Skills
         self.skills = {} # {skill_name: proficiency_percent}
         
+        # Status Effects (blind, knockdown, etc.)
+        self.status_effects = {} # {status_name: turns_remaining}
+        
         # Resting State
         self.is_sitting = False  # Track if player is sitting down
+        self.is_sneaking = False # Stealth mode (潛行)
+        self.fountain_last_use = 0.0 # Fountain cooldown timestamp
+
 
     def get_stat(self, stat_name):
         val = getattr(self, stat_name, 0)
@@ -704,9 +833,28 @@ class Player:
         wis = self.get_stat('wis')
         dex = self.get_stat('dex')
         
-        self.max_hp = con * 10 + self.level * 10 + 50
-        self.max_mp = int_stat * 10 + self.level * 5
-        self.max_mv = dex * 10 + con * 10 + 300
+        hp_per_con = 10
+        hp_per_level = 10
+        hp_base = 50
+        mp_per_int = 10
+        mp_per_level = 5
+        mv_per_dex = 10
+        mv_per_con = 10
+        mv_base = 300
+        
+        if self.balance:
+            hp_per_con = self.balance.get('player', 'hp_per_con', 10)
+            hp_per_level = self.balance.get('player', 'hp_per_level', 10)
+            hp_base = self.balance.get('player', 'hp_base', 50)
+            mp_per_int = self.balance.get('player', 'mp_per_int', 10)
+            mp_per_level = self.balance.get('player', 'mp_per_level', 5)
+            mv_per_dex = self.balance.get('player', 'mv_per_dex', 10)
+            mv_per_con = self.balance.get('player', 'mv_per_con', 10)
+            mv_base = self.balance.get('player', 'mv_base', 300)
+
+        self.max_hp = con * hp_per_con + self.level * hp_per_level + hp_base
+        self.max_mp = int_stat * mp_per_int + self.level * mp_per_level
+        self.max_mv = dex * mv_per_dex + con * mv_per_con + mv_base
         
         # Add Direct Bonuses from Equipment (HP/MP from Necklace/Ring)
         for item in self.equipment.values():
@@ -761,7 +909,7 @@ class Player:
         # Sitting Bonus
         if self.is_sitting:
             mv_reg *= 3
-            hp_reg += 1 # Small bonus to HP regen too
+            hp_reg *= 2 # Multiplicative bonus to HP regen
         
         self.hp = min(self.max_hp, self.hp + hp_reg)
         self.mp = min(self.max_mp, self.mp + mp_reg)
@@ -782,7 +930,16 @@ class Player:
             self.con += 1
             self.int += 1
             self.luk += 1
-            self.stat_points += 2 # 2 Points per level (User Request)
+            
+            points = 2
+            if self.balance:
+                points = self.balance.get('player', 'stat_points_per_level', 2)
+            self.stat_points += points # Points per level
+            
+            xp_multiplier = 1.2
+            if self.balance:
+                xp_multiplier = self.balance.get('player', 'xp_multiplier', 1.2)
+            self.next_level_xp = int(self.next_level_xp * xp_multiplier)
             
             self.recalculate_stats()
             # Heal on level up
@@ -799,6 +956,21 @@ class Player:
         self.visited.add((self.x, self.y))
         # Movement cost
         self.mv = max(0, self.mv - 1)
+
+    def has_status(self, status_name):
+        """Check if player has an active status effect (致盲/擊倒等)"""
+        return self.status_effects.get(status_name, 0) > 0
+
+    def tick_status_effects(self):
+        """Decrement all status effect timers. Remove expired ones."""
+        expired = []
+        for key in list(self.status_effects.keys()):
+            self.status_effects[key] -= 1
+            if self.status_effects[key] <= 0:
+                expired.append(key)
+        for key in expired:
+            del self.status_effects[key]
+        return expired
 
 class SaveManager:
     SAVE_DIR = "saves"
@@ -829,12 +1001,11 @@ class SaveManager:
             "mv": self.game.player.mv,
             "xp": self.game.player.xp,
             "next_level_xp": self.game.player.next_level_xp,
-            "xp": self.game.player.xp,
-            "next_level_xp": self.game.player.next_level_xp,
             "gold": self.game.player.gold,
             "stat_points": self.game.player.stat_points,
             "equipment": {k: (v.to_dict() if v else None) for k, v in self.game.player.equipment.items()},
             "inventory": [item.to_dict() for item in self.game.player.inventory],
+            "fountain_last_use": self.game.player.fountain_last_use,
         }
 
         world_data = {
@@ -843,7 +1014,11 @@ class SaveManager:
         }
         for (x, y), room in self.game.world.grid.items():
             room_data = {
-                "enemies": [(e.name, e.hp, e.is_aggressive, e.proto_id) for e in room.enemies],
+                "enemies": [{
+                    "name": e.name, "hp": e.hp, "is_aggressive": e.is_aggressive,
+                    "proto_id": e.proto_id, "debuffs": dict(e.debuffs),
+                    "inventory": [item.to_dict() for item in e.inventory]
+                } for e in room.enemies],
                 "items": [(i.name, i.drop_time) for i in room.items],
                 "respawn_queue": room.respawn_queue,
             }
@@ -897,6 +1072,7 @@ class SaveManager:
             self.game.player.next_level_xp = player_data["next_level_xp"]
             self.game.player.gold = player_data["gold"]
             self.game.player.stat_points = player_data["stat_points"]
+            self.game.player.fountain_last_use = player_data.get("fountain_last_use", 0.0)
             self.game.player.recalculate_stats() # Ensure max_hp, etc. are correct
 
             # Load equipment
@@ -945,13 +1121,33 @@ class SaveManager:
                 room = self.game.world.get_room(x, y)
                 if room:
                     room.enemies = []
-                    for e_name, e_hp, e_aggro, e_proto_id in room_data["enemies"]:
+                    for e_data in room_data["enemies"]:
+                        # Backward compatible: old format is list/tuple, new is dict
+                        if isinstance(e_data, dict):
+                            e_proto_id = e_data['proto_id']
+                            e_hp = e_data['hp']
+                            e_aggro = e_data['is_aggressive']
+                            e_debuffs = e_data.get('debuffs', {})
+                            e_inventory_data = e_data.get('inventory', [])
+                        else:
+                            # Old tuple format: (name, hp, aggro, proto_id)
+                            _, e_hp, e_aggro, e_proto_id = e_data
+                            e_debuffs = {}
+                            e_inventory_data = []
+                        
                         proto_enemy = self.game.loader.enemies.get(e_proto_id)
                         if proto_enemy:
                             new_enemy = copy.deepcopy(proto_enemy)
                             new_enemy.hp = e_hp
                             new_enemy.is_aggressive = e_aggro
                             new_enemy.proto_id = e_proto_id
+                            new_enemy.debuffs = e_debuffs
+                            # Restore inventory
+                            new_enemy.inventory = []
+                            for inv_data in e_inventory_data:
+                                inv_item = Item.from_dict(inv_data)
+                                if inv_item:
+                                    new_enemy.inventory.append(inv_item)
                             room.enemies.append(new_enemy)
                         else:
                             self.game.log(f"[yellow]警告: 找不到敵人原型 '{e_proto_id}'。[/]")
@@ -1075,12 +1271,13 @@ class Game:
         self.world = World()
         self.data_dir = "data" # Assuming data directory
         self.loader = DataLoader(self.data_dir)
+        self.balance = self.loader.balance
         self.skills_data = self.loader.load_skills(os.path.join(self.data_dir, 'skills.csv')) # Load Skills
         # Load from settings, default to 25 if not found
         self.max_log_lines = int(self.loader.settings.get('max_log_lines', 25))
         self.save_manager = SaveManager(self)
         self.setup_world()
-        self.player = Player("Hero") # Temp
+        self.player = Player("Hero", balance_manager=self.balance) # Pass balance manager
         
         # Time System
         self.game_time = 360 # 6:00 AM (in minutes)
@@ -1112,6 +1309,34 @@ class Game:
     def check_aggression_periodic(self):
         # Helper for Wait/Rest commands
         self.check_room_aggression()
+
+    def get_skill_cost(self, skill_id):
+        """Calculates dynamic MP/MV cost based on base cost, level, and zone."""
+        skill = self.skills_data.get(skill_id)
+        if not skill:
+            return 0, 'none'
+            
+        base_cost = int(skill.get('cost', 0))
+        cost_type = skill.get('cost_type', 'none')
+        
+        if cost_type == 'none':
+            return 0, 'none'
+            
+        # 1. Level-based scaling: 2% increase per level above 1
+        level_mult = 1.0 + (self.player.level - 1) * 0.02
+        
+        # 2. Zone-based scaling
+        curr_room = self.world.get_room(self.player.x, self.player.y)
+        zone_mult = 1.0
+        if curr_room:
+            zone = getattr(curr_room, 'zone', 'none')
+            if zone in ['mines', 'wasteland']:
+                zone_mult = 1.2
+            elif zone == 'nexus':
+                zone_mult = 1.5
+        
+        final_cost = int(base_cost * level_mult * zone_mult)
+        return final_cost, cost_type
         
     def setup_world(self):
         # Clear existing world data
@@ -1240,9 +1465,9 @@ class Game:
                 if x == self.player.x and y == self.player.y:
                     room = self.world.get_room(x, y)
                     if room and room.enemies:
-                        line += "[bold red]@[/]"
+                        line += "[bold red] @ [/]"
                     else:
-                        line += "[bold white]@[/]" 
+                        line += "[bold white] @ [/]" 
                 elif (x, y) in self.player.visited:
                     room = self.world.get_room(x, y)
                     if room:
@@ -1258,7 +1483,7 @@ class Game:
                                 except AttributeError:
                                     print(f"DEBUG: Bad enemy in room ({x},{y}): {e}")
                                     
-                            line += "<b>[bold red]B[/]</b>" if is_boss else "[red]E[/]"
+                            line += "<b>[bold red] B [/]</b>" if is_boss else " [red]E[/] "
                         else:
                             line += room.symbol
                     else:
@@ -1431,6 +1656,7 @@ class Game:
             self.update_layout(self.layout, cmd_buffer + "_", scroll_offset)
             last_regen_time = time.time()
             last_decay_check_time = time.time()
+            last_shop_check_time = time.time() # Shop restock timer
             
             while self.running:
                 current_time = time.time()
@@ -1457,6 +1683,18 @@ class Game:
                                 self.log(f"[dim]{item.name} 風化消失了...[/]")
                                 
                     last_decay_check_time = current_time
+
+                # Shop Restocking (Every 30 seconds check)
+                if current_time - last_shop_check_time > 30.0:
+                    interval = self.balance.get('world', 'shop_restock_interval', 300)
+                    for r in self.world.grid.values():
+                        if r.shop:
+                            if current_time - r.shop.last_restock_time >= interval:
+                                r.shop.restock()
+                                r.shop.last_restock_time = current_time
+                                if r.x == self.player.x and r.y == self.player.y:
+                                    self.log(f"[bold yellow]{r.shop.name} 的貨架更新了！[/]")
+                    last_shop_check_time = current_time
 
                 # Respawn Logic (Check every 10 seconds or every loop? Every loop is fine, low overhead)
                 # But to avoid spam checking every room every frame, maybe check once per second?
@@ -1487,6 +1725,44 @@ class Game:
                     cursor_visible = not cursor_visible
                     last_cursor_toggle = time.time()
                 
+                # Auto-Attack Logic (Player and Enemies in current room)
+                curr_room = self.world.get_room(self.player.x, self.player.y)
+                attack_interval = self.balance.get('combat', 'attack_interval', 1.0)
+                
+                if curr_room and curr_room.enemies:
+                    # Player Auto-Attack
+                    active_enemy = None
+                    for e in curr_room.enemies:
+                        if e.is_aggressive:
+                            active_enemy = e
+                            break
+                    
+                    if active_enemy and current_time - self.player.last_attack_time >= attack_interval:
+                        # Dynamic Cost for Basic Attack
+                        cost, c_type = self.get_skill_cost('basic_attack')
+                        if getattr(self.player, c_type, 0) >= cost:
+                            # Deduct Cost
+                            if c_type == 'mp': self.player.mp -= cost
+                            elif c_type == 'mv': self.player.mv -= cost
+                            elif c_type == 'hp': self.player.hp -= cost
+
+                            self.player.last_attack_time = current_time
+                            p_dmg = self.calculate_player_damage()
+                            self.log(f"[bold cyan]你自動攻擊了 {active_enemy.name}! (消耗 {cost} {c_type.upper()})[/]")
+                            self.perform_attack(active_enemy, p_dmg, f"造成了")
+                            if not active_enemy.is_alive():
+                                self.resolve_turn(active_enemy, curr_room)
+                        else:
+                            self.log(f"[yellow]你太累了，無法發動攻擊！ (需要 {cost} {c_type.upper()})[/]")
+                            self.player.last_attack_time = current_time # Still reset timer
+                    
+                    # Enemies Auto-Attack
+                    for e in curr_room.enemies:
+                        if e.is_aggressive and e.is_alive():
+                            if current_time - e.last_attack_time >= attack_interval:
+                                e.last_attack_time = current_time
+                                self.handle_enemy_turn(e, curr_room)
+
                 cursor_char = "_" if cursor_visible else " "
                 
                 # Update UI
@@ -1556,6 +1832,20 @@ class Game:
         curr_room = self.world.get_room(self.player.x, self.player.y)
         self.log(f"[bold yellow]{curr_room.name}[/]")
         self.log(curr_room.description)
+        
+        # Fountain Display at (0,0)
+        if self.player.x == 0 and self.player.y == 0:
+            import time
+            elapsed = time.time() - self.player.fountain_last_use
+            cooldown = 7200 # 2 hours
+            if elapsed < cooldown:
+                remaining = int(cooldown - elapsed)
+                m, s = divmod(remaining, 60)
+                h, m = divmod(m, 60)
+                self.log(f"[cyan]此處有一座宏偉的噴水池... (冷卻中: {h:02d}:{m:02d}:{s:02d})[/]")
+            else:
+                self.log("[bold cyan]此處有一座宏偉的噴水池，池水清澈見底，散發著微弱的光芒。你可以喝點水 (drink water)。[/]")
+
         
         aggro_triggered = False
         if curr_room.enemies:
@@ -1631,6 +1921,14 @@ class Game:
         return False
 
     def process_move(self, direction):
+        # Sitting / Knockdown Check
+        if self.player.is_sitting:
+            self.log("[yellow]你坐著不能移動！請先站起來。(stand up)[/]")
+            return
+        if self.player.has_status('knockdown'):
+            self.log("[yellow]你被擊倒在地，無法移動！請先站起來。(stand up)[/]")
+            return
+
         # 1. Player Escape Check
         curr_room = self.world.get_room(self.player.x, self.player.y)
         if any(e.is_aggressive for e in curr_room.enemies):
@@ -1809,15 +2107,35 @@ class Game:
             args = cmd.split(' ', 1)
             direction = 'all'
             if len(args) > 1:
-                direction = args[1][0] # n, s, e, w
-            self.handle_scan(direction)
+                target = args[1].lower().strip()
+                if target in ['n', 's', 'e', 'w', 'north', 'south', 'east', 'west']:
+                    direction = target[0]
+                    self.handle_sneak_scout(direction)
+                    return
+                else:
+                    # Not a direction! Treat as inspection if sneaking
+                    if self.player.is_sneaking:
+                        self.handle_inspect_enemy(target)
+                        return
+                    else:
+                        # Basic scan logic (directional) or hint
+                        self.log("你可以用 'sn', 'ss', 'se', 'sw' 來潛行偵查。")
+                        return
+            else:
+                # Bare 'scan'
+                if self.player.is_sneaking:
+                    self.handle_scan_equipment()
+                    return
+                else:
+                    self.log("你需要處於潛行狀態才能仔細偵查敵人的裝備。")
+                    return
             return
 
-        # Scan Shortcuts
-        if cmd in ['sn', 'scan north']: self.handle_scan('n'); return
-        if cmd in ['ss', 'scan south']: self.handle_scan('s'); return
-        if cmd in ['se', 'scan east']: self.handle_scan('e'); return
-        if cmd in ['sw', 'scan west']: self.handle_scan('w'); return
+        # Scan/Sneak Scouting Shortcuts
+        if cmd in ['sn', 'scan north']: self.handle_sneak_scout('n'); return
+        if cmd in ['ss', 'scan south']: self.handle_sneak_scout('s'); return
+        if cmd in ['se', 'scan east']: self.handle_sneak_scout('e'); return
+        if cmd in ['sw', 'scan west']: self.handle_sneak_scout('w'); return
             
         # Handle manual move commands as fallback
         if cmd in ['n', 'north', 's', 'south', 'e', 'east', 'w', 'west']:
@@ -1875,15 +2193,15 @@ class Game:
             self.handle_train(cmd.split(' ', 1)[1])
             return
         elif cmd.startswith('cast '):
-            if self.player.is_sitting:
-                self.log("[yellow]你坐著不能施法！請先站起來。(stand up)[/]")
+            skill_arg = cmd.split(' ', 1)[1]
+            # Relax sit for heal/ch
+            if self.player.is_sitting and not any(h in skill_arg.lower() for h in ['heal', 'ch']):
+                self.log("[yellow]你坐著不能施展戰鬥法術！請先站起來。(stand up)[/]")
                 return
-            self.handle_skill(cmd.split(' ', 1)[1], is_spell=True)
+            self.handle_skill(skill_arg, is_spell=True)
             return
         elif cmd == 'skill' or cmd.startswith('skill '):
-            if self.player.is_sitting:
-                self.log("[yellow]你坐著不能使用技能！請先站起來。(stand up)[/]")
-                return
+            # Sit allowed for skills
             args = ""
             if len(cmd) > 6:
                 args = cmd[6:]
@@ -1965,6 +2283,14 @@ class Game:
             self.handle_stand()
             return
 
+        if cmd in ['sneak', 'sne']:
+            self.handle_sneak()
+            return
+        if cmd.startswith('sne ') or cmd.startswith('sneak '):
+            target_name = cmd.split(' ', 1)[1]
+            self.handle_inspect_enemy(target_name)
+            return
+
         if cmd in ['wait', 'rest']:
             self.handle_wait()
             return
@@ -1995,61 +2321,119 @@ class Game:
         # Debug
         # self.log(f"[dim]Debug: Combat with '{target.name}'[/]")
 
-    def handle_scan(self, direction='all'):
+    def handle_sneak_scout(self, direction='all'):
+        """Directional scout that triggers stealth mode if successful (潛行偵查)"""
+        import random
         curr_room = self.world.get_room(self.player.x, self.player.y)
         
-        # Calculate Success Chance
-        # (DEX + LUK) * 2
+        # Base scout score: (DEX + LUK) * 2
         dex = self.player.get_stat('dex')
         luk = self.player.get_stat('luk')
         score = (dex + luk) * 2
         
-        self.log(f"[italic]你瞇起眼睛，仔細觀察四周... (偵查值: {score})[/]")
+        # Small boost to score if already sneaking
+        score += 20 if self.player.is_sneaking else 0
         
-        # Check adjacent rooms
+        self.log(f"[italic]你壓低身姿，警覺地向{direction.upper()}方觀察... (偵查值: {score})[/]")
+        
+        # Directions to check
         directions = []
+        d_map = {'n':(0,1), 's':(0,-1), 'e':(1,0), 'w':(-1,0)}
         if direction == 'all':
              directions = [('n', 0, 1), ('s', 0, -1), ('e', 1, 0), ('w', -1, 0)]
+        elif direction in d_map:
+             directions = [(direction, *d_map[direction])]
         else:
-             # Just one direction
-             d_map = {'n':(0,1), 's':(0,-1), 'e':(1,0), 'w':(-1,0)}
-             if direction in d_map:
-                 directions = [(direction, *d_map[direction])]
+             self.log(f"[red]無效的方向 '{direction}'。[/]")
+             return
         
         found_any = False
+        success_count = 0
         for d_name, dx, dy in directions:
              nx, ny = self.player.x + dx, self.player.y + dy
              room = self.world.get_room(nx, ny)
              if room:
-                 # Difficulty: Avg Enemy Level * 10 + 30
-                 difficulty = 30
-                 if room.enemies:
-                     avg_lv = sum(e.level for e in room.enemies) / len(room.enemies)
-                     difficulty += int(avg_lv * 10)
+                 if not room.enemies:
+                     self.log(f"[{d_name.upper()}]: {room.name} - [green]安全[/]")
+                     success_count += 1
+                     continue
+                 
+                 # Level difference penalty
+                 avg_lv = sum(e.level for e in room.enemies) / len(room.enemies)
+                 difficulty = 35 + int(avg_lv * 4)
                  
                  roll = random.randint(1, 100) + score
-                 # self.log(f"Debug: Room {d_name} Diff {difficulty} vs Roll {roll-score}+{score}={roll}")
-                 
                  if roll >= difficulty:
-                      found_any = True
-                      info = []
-                      if room.enemies:
-                          info.append(f"敵人: {', '.join([e.name for e in room.enemies])}")
-                      else:
-                          info.append("安全")
-                      
-                      self.log(f"[{d_name.upper()}]: {room.name} - {'; '.join(info)}")
+                     success_count += 1
+                     found_any = True
+                     from collections import Counter
+                     name_counts = Counter(e.name for e in room.enemies)
+                     type_str = ', '.join(f"{name} x{cnt}" if cnt > 1 else name 
+                                          for name, cnt in name_counts.items())
+                     self.log(f"[{d_name.upper()}]: {room.name} - 發現敵人: {type_str}")
                  else:
-                      # Fail!
-                      # If critical fail?
-                      # Triggers aggro in that room?
-                      if room.enemies:
-                           self.log(f"[{d_name.upper()}]: 你看不清楚那邊有什麼... [red]你的窺視似乎引起了注意![/]")
-                           for e in room.enemies:
-                               if not e.is_aggressive:
-                                   e.is_aggressive = True
-                           # If they are aggressive, will they move? Not implemented yet.
-                           # But if you move there, they attack immediately.
+                     self.log(f"[{d_name.upper()}]: 你看不清那邊的情況。")
+                     # If not already sneaking, there's a small chance to get noticed if very unlucky?
+                     # Let's keep it safe for now as per user requested "belongs to sneak"
+        
+        # If successfully scouted at least one direction OR room was safe
+        if success_count > 0:
+             self.player.is_sneaking = True
+             self.log("[bold green]你成功進入了潛行狀態。[/]")
+        else:
+             self.player.is_sneaking = False
+             self.log("[yellow]偵查失敗，你暴露了自己的位置。[/]")
+
+    def handle_scan_equipment(self):
+        """Detailed in-room equipment inspection (需處於潛行狀態)"""
+        if not self.player.is_sneaking:
+            self.log("[yellow]你需要先進入潛行狀態 (使用 sn/ss/se/sw 偵查敵情) 才能進行裝備偵查。[/]")
+            return
+
+        import random
+        curr_room = self.world.get_room(self.player.x, self.player.y)
+        if not curr_room.enemies:
+            self.log("這裡沒有敵人可以偵查。")
+            return
+
+        dex = self.player.get_stat('dex')
+        luk = self.player.get_stat('luk')
+        score = (dex + luk) * 2
+        
+        self.log(f"[italic]你隱藏在陰影中，仔細觀察房間內的敵人... (偵查值: {score})[/]")
+        
+        for e in curr_room.enemies:
+            # Difficulty based on enemy level
+            difficulty = 40 + (e.level * 5)
+            roll = random.randint(1, 100) + score
+            
+            if roll >= difficulty:
+                equip_list = []
+                for slot, item in e.equipment.items():
+                    if item:
+                        # Durability check
+                        dur_str = ""
+                        if hasattr(item, 'max_durability') and item.max_durability > 0:
+                            pct = int((item.current_durability / item.max_durability) * 100)
+                            dur_str = f" [({pct}%)]"
+                        equip_list.append(f"{item.get_display_name()}{dur_str}")
+                
+                status_list = []
+                for s_name, turns in e.debuffs.items():
+                    status_list.append(f"[bold yellow]{s_name}[/]({turns}t)")
+                
+                info = f"[bold cyan]{e.name}[/]:"
+                if equip_list:
+                    info += f" 裝備 [{', '.join(equip_list)}]"
+                else:
+                    info += " 無裝備"
+                
+                if status_list:
+                    info += f" | 狀態 [{', '.join(status_list)}]"
+                
+                self.log(info)
+            else:
+                self.log(f"你看不清 [cyan]{e.name}[/] 的具體裝備。")
          
         if not found_any and direction == 'all':
              self.log("你什麼也沒發現。")
@@ -2067,8 +2451,13 @@ class Game:
     def calculate_player_damage(self):
         # Calculate Base Damage using Player Stats (including bonuses)
         str_val = self.player.get_stat('str')
-        min_d = 2 + (str_val // 2)
-        max_d = 5 + (str_val // 2)
+        
+        min_base = self.balance.get('combat', 'player_min_dmg_base', 2)
+        max_base = self.balance.get('combat', 'player_max_dmg_base', 5)
+        dmg_per_str = self.balance.get('combat', 'player_dmg_per_str', 0.5)
+        
+        min_d = min_base + int(str_val * dmg_per_str)
+        max_d = max_base + int(str_val * dmg_per_str)
         
         # Check Right Hand Weapon
         r_hand = self.player.equipment.get('r_hand')
@@ -2101,7 +2490,8 @@ class Game:
         self.alert_group(target)
         
         # Accuracy Check
-        hit_chance = self.loader.settings.get('base_hit_chance', 100)
+        base_hit = self.balance.get('combat', 'base_hit_chance', 100)
+        hit_chance = base_hit
         
         # Player attacking Enemy
         weapon = self.player.equipment.get('r_hand')
@@ -2109,10 +2499,16 @@ class Game:
             hit_chance = weapon.accuracy
             
         # Stat Modifiers
-        hit_chance += (self.player.get_stat('dex') * 0.5)
+        hit_per_dex = self.balance.get('combat', 'player_hit_per_dex', 0.5)
+        hit_chance += (self.player.get_stat('dex') * hit_per_dex)
+        
         # Target Avoidance
-        target_agi = 10 + (target.damage_range[1] * 0.5) # Estimate
-        hit_chance -= (target_agi * 0.5)
+        evade_base = self.balance.get('combat', 'enemy_evade_base', 10)
+        evade_per_dmg = self.balance.get('combat', 'enemy_evade_per_dmg', 0.5)
+        evade_mult = self.balance.get('combat', 'evade_multiplier', 0.5)
+        
+        target_agi = evade_base + (target.damage_range[1] * evade_per_dmg) # Estimate
+        hit_chance -= (target_agi * evade_mult)
         
         # Roll
         roll = random.randint(1, 100)
@@ -2193,10 +2589,11 @@ class Game:
                     name = sk.get('name')
                     sid = [k for k,v in self.skills_data.items() if v == sk][0]
                     req_lv = sk.get('req_lv', 1)
-                    cost = f"{sk.get('cost')} {sk.get('cost_type').upper()}"
+                    cost_val, c_type = self.get_skill_cost(sid)
+                    cost_str = f"{cost_val} {c_type.upper()}"
                     
                     if self.player.level >= req_lv:
-                         spells.append(f"[green]{name}[/] ({sid}) - {cost}")
+                         spells.append(f"[green]{name}[/] ({sid}) - {cost_str}")
                     else:
                          spells.append(f"[dim]{name} - (需 Lv{req_lv})[/]")
             
@@ -2238,15 +2635,18 @@ class Game:
         
         # Special Case: Heal (Self)
         if skill_key == 'heal':
+            cost, c_type = self.get_skill_cost('heal')
             if self.player.level < 3:
                 self.log("[red]你還沒學會 Heal (需要 Lv3)。[/]")
                 return
-            if self.player.mp < 10:
-                self.log("[red]魔力不足! (需要 10 MP)[/]")
+            if getattr(self.player, c_type, 0) < cost:
+                self.log(f"[red]{c_type.upper()}不足! (需要 {cost} {c_type.upper()})[/]")
                 return
-            self.player.mp -= 10
+            if c_type == 'mp': self.player.mp -= cost
+            elif c_type == 'mv': self.player.mv -= cost
+            
             self.player.hp = min(self.player.max_hp, self.player.hp + 30)
-            self.log(f"[green]你施放了治療術! 生命回復了 30 點。[/]")
+            self.log(f"[green]你施放了治療術! 生命回復了 30 點。 (消耗 {cost} {c_type.upper()})[/]")
             return
 
         # Target Selection for Offensive Skills
@@ -2270,10 +2670,7 @@ class Game:
         damage = 0
         
         if skill_key == "power":
-            # Cost handled in validation block if loaded, else manual fallback below for safety
-            # Actually, let's remove manual cost check if data exists? 
-            # For phase 1, we keep manual checks unless removed.
-            # But we want to use CSV.
+            # Redundant check removed, handled by generic block below
             pass
             
         # Check Skill Data (Validation Layer)
@@ -2286,20 +2683,17 @@ class Game:
                  self.log(f"[red]你還沒學會 {sk_data['name']} (需要 Lv{sk_data['req_lv']})。[/]")
                  return
 
-            # 2. Cost Check
-            cost = sk_data.get('cost', 0)
-            ctype = sk_data.get('cost_type', 'none')
+            # 2. Cost Check (Scaled)
+            cost, ctype = self.get_skill_cost(skill_key)
             
-            if ctype == 'mv':
-                if p.mv < cost:
-                    self.log(f"[red]體力不足! 需要 {cost} MV。[/]")
+            if ctype != 'none':
+                if getattr(p, ctype, 0) < cost:
+                    self.log(f"[red]{ctype.upper()}不足! 需要 {cost} {ctype.upper()}。[/]")
                     return
-                p.mv -= cost
-            elif ctype == 'mp':
-                if p.mp < cost:
-                     self.log(f"[red]魔力不足! 需要 {cost} MP。[/]")
-                     return
-                p.mp -= cost
+                # Deduct
+                if ctype == 'mv': p.mv -= cost
+                elif ctype == 'mp': p.mp -= cost
+                elif ctype == 'hp': p.hp -= cost
                 
         # Calculate Base Damage once for use in formulas
         # This includes Weapon Damage!
@@ -2392,18 +2786,31 @@ class Game:
                 self.log("你需要指定目標 (blind <target>)。")
                 return
             
-            # Cost handled in validation block above
+            # Cost Check
+            cost, ctype = self.get_skill_cost('blind')
+            if getattr(p, ctype, 0) < cost:
+                self.log(f"[red]{ctype.upper()}不足! (需要 {cost} {ctype.upper()})[/]")
+                return
+            if ctype == 'mp': p.mp -= cost
+            elif ctype == 'mv': p.mv -= cost
             
             if self.check_skill_success('blind'):
-                target.debuffs['def_down'] = 3 # 3 Turns
+                target.debuffs['blind'] = 3 # 3 Turns
                 self.log(f"你不想讓敵人看見，對 {target.name} 使用了 [bold cyan]致盲 (Blind)[/]!")
-                self.log(f"[bold yellow]{target.name} 被致盲了! 防禦力下降![/]")
+                self.log(f"[bold yellow]{target.name} 被致盲了! 命中率與防禦力下降! (3回合)[/]")
                 damage = 0
             else:
                  self.log(f"你試圖致盲 {target.name}，但是失敗了!")
                  return
                  
         elif skill_key == "kick" or skill_key == "kn" or skill_key == "kp":
+            cost, c_type = self.get_skill_cost('kick')
+            if getattr(p, c_type, 0) < cost:
+                self.log(f"[red]{c_type.upper()}不足! (需要 {cost} {c_type.upper()})[/]")
+                return
+            if c_type == 'mp': p.mp -= cost
+            elif c_type == 'mv': p.mv -= cost
+
             if not target:
                 self.log("你需要指定目標 (kick <target>)。")
                 return
@@ -2411,12 +2818,12 @@ class Game:
             # Checks handled by validation
             
             if self.check_skill_success('kick'):
-                 # Damage + Debuff
+                 # Damage + Knockdown
                  base_dmg = random.randint(2 + p.str // 3, 5 + p.str // 3)
                  damage = base_dmg
-                 target.debuffs['def_down'] = 2 # 2 Turns
+                 target.debuffs['knockdown'] = 2 # 2 Turns
                  self.log(f"你飛起一腳，對 {target.name} 使用了 [bold green]踢擊 (Kick)[/]!")
-                 self.log(f"[bold yellow]{target.name} 失去平衡! 防禦力下降![/]")
+                 self.log(f"[bold yellow]{target.name} 被踢倒在地! (擊倒 2回合, 下次打落成功率提升)[/]")
             else:
                  self.log(f"你試圖踢擊 {target.name}，但是滑倒了 (失敗)!")
                  return
@@ -2425,12 +2832,181 @@ class Game:
              # Handled by generic formula evaluator above
              pass
 
+        elif skill_key == "disarm" or skill_key == "da" or skill_key == "di":
+            if not target:
+                self.log("你需要指定目標 (disarm <target>)。")
+                return
+                
+            # Cost Check
+            cost, ctype = self.get_skill_cost('disarm')
+            if getattr(p, ctype, 0) < cost:
+                self.log(f"[red]{ctype.upper()}不足! (需要 {cost} {ctype.upper()})[/]")
+                return
+            if ctype == 'mp': p.mp -= cost
+            elif ctype == 'mv': p.mv -= cost
+            
+            self.handle_disarm(target, curr_room)
+            return # handle_disarm manages its own resolve
+
+        elif skill_key == "sunder" or skill_key == "su" or skill_key == "sd":
+            if not target:
+                self.log("你需要指定目標 (sunder <target>)。")
+                return
+
+            # Cost Check
+            cost, ctype = self.get_skill_cost('sunder')
+            if getattr(p, ctype, 0) < cost:
+                self.log(f"[red]{ctype.upper()}不足! (需要 {cost} {ctype.upper()})[/]")
+                return
+            if ctype == 'mp': p.mp -= cost
+            elif ctype == 'mv': p.mv -= cost
+            
+            self.handle_sunder(target, curr_room)
+            return # handle_sunder manages its own resolve
+
         else:
             self.log(f"未知的技能: {skill_key}")
             return
 
         # Apply Player Attack
         self.perform_attack(target, damage, f"你對 {target.name} 造成了")
+        self.resolve_turn(target, curr_room)
+
+    def calculate_disarm_success(self, target):
+        """Calculate disarm success rate against target (計算打落成功率)"""
+        p = self.player
+        base_chance = 0.30  # 30% base
+
+        # Bonus from target status effects
+        if target.has_status('blind'):
+            base_chance += 0.25  # +25% if blind
+        if target.has_status('knockdown'):
+            base_chance += 0.20  # +20% if knocked down
+
+        # Attribute modifier: (atk DEX*0.02 + atk LUK*0.01) - (tgt estimate*0.02)
+        atk_bonus = p.dex * 0.02 + p.luk * 0.01
+        # Estimate target DEX/LUK from level
+        tgt_dex_est = target.level * 2 if hasattr(target, 'level') else 5
+        tgt_luk_est = target.level if hasattr(target, 'level') else 3
+        tgt_penalty = tgt_dex_est * 0.02 + tgt_luk_est * 0.01
+
+        final_chance = base_chance + atk_bonus - tgt_penalty
+        return max(0.05, min(0.90, final_chance))  # Clamp 5% ~ 90%
+
+    def handle_disarm(self, target, curr_room):
+        """Handle disarm skill: unequip target weapon → room floor → snatch race (打落技能處理)"""
+        p = self.player
+
+        # Check if target has a weapon
+        weapon = target.equipment.get('r_hand')
+        if not weapon:
+            self.log(f"{target.name} 沒有可以打落的武器!")
+            return
+
+        # Calculate success
+        chance = self.calculate_disarm_success(target)
+        roll = random.random()
+
+        self.log(f"你嘗試打落 {target.name} 的 {weapon.name}! (成功率: {int(chance*100)}%)")
+
+        if roll < chance:
+            # Success: unequip weapon → drop to room
+            del target.equipment['r_hand']
+            curr_room.items.append(weapon)
+            weapon.drop_time = time.time()
+            self.log(f"[bold green]成功! {target.name} 的 {weapon.get_display_name()} 掉落在地![/]")
+
+            # Trigger Snatch Logic
+            self.execute_snatch_logic(target, weapon, curr_room)
+        else:
+            self.log(f"[bold red]打落失敗! {target.name} 緊握住了武器![/]")
+
+        # Enemy retaliates
+        self.resolve_turn(target, curr_room)
+
+    def execute_snatch_logic(self, enemy, weapon, curr_room):
+        """Snatch race: DEX/LUK weighted pick-up competition (搶奪邏輯)"""
+        p = self.player
+
+        # Calculate weights
+        p_weight = p.dex * 0.7 + p.luk * 0.3
+        # Estimate enemy stats from level
+        e_dex = enemy.level * 2 if hasattr(enemy, 'level') else 5
+        e_luk = enemy.level if hasattr(enemy, 'level') else 3
+        e_weight = e_dex * 0.7 + e_luk * 0.3
+
+        # Blind / Knockdown → weight drops to 0 (can't snatch)
+        if enemy.has_status('blind') or enemy.has_status('knockdown'):
+            e_weight = 0.0
+        if p.has_status('blind') or p.has_status('knockdown'):
+            p_weight = 0.0
+
+        total = p_weight + e_weight
+        if total <= 0:
+            self.log(f"[dim]雙方都無法搶奪武器，{weapon.name} 留在地上。[/]")
+            return
+
+        p_chance = p_weight / total
+        roll = random.random()
+
+        if roll < p_chance:
+            # Player wins the snatch
+            if weapon in curr_room.items:
+                curr_room.items.remove(weapon)
+            p.inventory.append(weapon)
+            self.log(f"[bold green]你搶先一步撿起了 {weapon.get_display_name()}![/]")
+        else:
+            # Enemy wins the snatch
+            if weapon in curr_room.items:
+                curr_room.items.remove(weapon)
+            enemy.inventory.append(weapon)
+            self.log(f"[bold red]{enemy.name} 搶先撿回了 {weapon.name}![/]")
+            # Re-equip the weapon
+            enemy.equipment['r_hand'] = weapon
+            enemy.inventory.remove(weapon)
+            self.log(f"[bold red]{enemy.name} 重新裝備了 {weapon.name}![/]")
+
+    def handle_sunder(self, target, curr_room):
+        """Handle sunder skill: deal durability damage to target equipment (破甲技能處理)"""
+        p = self.player
+
+        # Find target's equipment that can be sundered
+        sunder_candidates = []
+        for slot, item in target.equipment.items():
+            if hasattr(item, 'current_durability') and item.current_durability > 0:
+                sunder_candidates.append((slot, item))
+
+        if not sunder_candidates:
+            self.log(f"{target.name} 沒有可以破壞的裝備!")
+            return
+
+        # Pick random equipment piece
+        slot, item = random.choice(sunder_candidates)
+
+        # Deal 50% base damage
+        base_dmg = self.calculate_player_damage()
+        damage = max(1, base_dmg // 2)
+
+        # Durability damage: 3~8 base + STR bonus
+        dur_damage = random.randint(3, 8) + p.str // 5
+        old_dur = item.current_durability
+        item.current_durability = max(0, item.current_durability - dur_damage)
+
+        slot_name_map = {'r_hand': '武器', 'l_hand': '盾牌', 'body': '護甲', 'head': '頭盔', 'legs': '護腿', 'feet': '靴子'}
+        slot_cn = slot_name_map.get(slot, slot)
+
+        self.log(f"你對 {target.name} 使用 [bold yellow]破甲 (Sunder)[/]!")
+        self.log(f"你猛擊 {target.name} 的 {item.name}! 耐久度 {old_dur} → {item.current_durability}")
+
+        if item.current_durability <= 0:
+            # Equipment destroyed!
+            del target.equipment[slot]
+            self.log(f"[bold red]{target.name} 的 {item.name} 碎裂了! ({slot_cn}消失)[/]")
+        elif item.current_durability <= item.max_durability * 0.2:
+            self.log(f"[bold yellow]{target.name} 的 {item.name} 快要碎裂了! ({item.current_durability}/{item.max_durability})[/]")
+
+        # Apply the 50% damage hit
+        self.perform_attack(target, damage, f"破甲同時造成了")
         self.resolve_turn(target, curr_room)
 
     def handle_combat(self, target_name):
@@ -2446,14 +3022,26 @@ class Game:
             self.log(f"你在這裡沒看到 '{target_name}'。")
             return
             
+        # Basic Attack Cost check
+        cost, c_type = self.get_skill_cost('basic_attack')
+        if getattr(self.player, c_type, 0) < cost:
+            self.log(f"[yellow]你太累了，無法發動攻擊！ (需要 {cost} {c_type.upper()})[/]")
+            return
+
+        # Deduct Cost
+        if c_type == 'mp': self.player.mp -= cost
+        elif c_type == 'mv': self.player.mv -= cost
+        elif c_type == 'hp': self.player.hp -= cost
+
         # Set Aggressive Flag
         target.is_aggressive = True
+        self.player.last_attack_time = time.time() # Reset timer on manual pull
 
         # Regular Attack
         # Calculate Damage
         p_dmg = self.calculate_player_damage() 
         
-        self.log(f"你攻擊了 {target.name}!")
+        self.log(f"你揮舞武器攻向 {target.name}!")
         self.perform_attack(target, p_dmg, f"造成了")
 
         # Resolve Turn
@@ -2519,6 +3107,16 @@ class Game:
                 curr_room.respawn_queue.append((target.proto_id, respawn_time))
                 self.log(f"[dim]提示: {target.name} 將在 {int(respawn_delay)} 秒後重生。[/]")
         else:
+            # Tick enemy debuffs each combat round (敵人 debuff 每回合遞減)
+            expired = target.tick_debuffs()
+            for eff in expired:
+                if eff == 'blind':
+                    self.log(f"[dim]{target.name} 的致盲效果消退了。[/]")
+                elif eff == 'knockdown':
+                    self.log(f"[dim]{target.name} 從地上站了起來。[/]")
+                elif eff == 'def_down':
+                    self.log(f"[dim]{target.name} 的防禦下降效果消退了。[/]")
+            
             self.handle_enemy_turn(target, curr_room)
 
     def handle_death(self):
@@ -2714,6 +3312,29 @@ class Game:
                      elif item.current_durability <= item.max_durability * 0.1:
                           self.log(f"[bold red]你的 {item.name} 快要壞了! ({item.current_durability}/{item.max_durability})[/]")
         
+        # Enemy Sunder Logic (Boss/Elite chance to damage player equipment durability)
+        is_boss_e = target.proto_id and target.proto_id.startswith('boss_')
+        is_mutated_e = target.id and "mutated" in target.id
+        is_elite_e = target.max_hp >= 300 or is_mutated_e
+        if is_boss_e or is_elite_e:
+            if random.random() < 0.15:
+                sunder_slots = ['body', 'head', 'legs', 'feet', 'r_hand', 'l_hand']
+                p_sunder_cands = []
+                for s in sunder_slots:
+                    eq = self.player.equipment.get(s)
+                    if eq and hasattr(eq, 'current_durability') and eq.current_durability > 0:
+                        p_sunder_cands.append((s, eq))
+                if p_sunder_cands:
+                    s_slot, s_item = random.choice(p_sunder_cands)
+                    s_dur = random.randint(2, 5)
+                    s_old = s_item.current_durability
+                    s_item.current_durability = max(0, s_item.current_durability - s_dur)
+                    self.log(f"[bold red]{target.name} sunder! {s_item.name} durability {s_old} -> {s_item.current_durability}[/]")
+                    if s_item.current_durability <= 0:
+                        del self.player.equipment[s_slot]
+                        self.player.recalculate_stats()
+                        self.log(f"[bold red]{s_item.name} destroyed![/]")
+
         if self.player.hp <= 0:
             self.handle_death()
             return
@@ -2722,6 +3343,14 @@ class Game:
         if self.player.is_sitting:
             self.log(f"[bold yellow]你受到攻擊，驚跳起來反擊！(Stand Up)[/]")
             self.player.is_sitting = False
+        
+        # Tick player status effects each combat turn (玩家狀態每回合遞減)
+        p_expired = self.player.tick_status_effects()
+        for eff in p_expired:
+            if eff == 'knockdown':
+                self.log(f"[dim]你從擊倒中恢復了。[/]")
+            elif eff == 'blind':
+                self.log(f"[dim]你的視線恢復了。[/]")
 
         if self.player.hp > 0:
             # 50% Chance to Counter Attack unless dead
@@ -3000,6 +3629,27 @@ class Game:
             self.log(f"你身上沒有 '{keyword}'。")
 
     def handle_drink(self, keyword):
+        """Drink a potion from inventory or water from the fountain"""
+        # Fountain Override (0, 0)
+        if keyword.lower() == "water" and self.player.x == 0 and self.player.y == 0:
+            import time
+            elapsed = time.time() - self.player.fountain_last_use
+            cooldown = 7200 # 2 hours
+            if elapsed < cooldown:
+                remaining = int(cooldown - elapsed)
+                m, s = divmod(remaining, 60)
+                h, m = divmod(m, 60)
+                self.log(f"[yellow]泉水似乎還在匯聚靈力... 你需要再等待 {h:02d}:{m:02d}:{s:02d} 才能再次飲用。[/]")
+                return
+            
+            # Recovery
+            self.player.hp = self.player.max_hp
+            self.player.mp = self.player.max_mp
+            self.player.mv = self.player.max_mv
+            self.player.fountain_last_use = time.time()
+            self.log("[bold cyan]你飲下了清涼的泉水，感覺全身充滿了力量！(HP/MP/MV 已完全恢復)[/]")
+            return
+
         target_item, _ = self.get_item_and_index(self.player.inventory, keyword)
         
         if not target_item:
@@ -3269,9 +3919,9 @@ class Game:
                  actual_slot = explicit_slot
              else:
                  # Auto Logic
-                 if not self.player.equipment.get('r_hand') or (self.player.equipment.get('r_hand') and self.player.equipment.get('r_hand').slot == '2h'):
+                 if not self.player.equipment.get('r_hand'):
                      actual_slot = 'r_hand'
-                 elif not self.player.equipment.get('l_hand'):
+                 elif not self.player.equipment.get('l_hand') and getattr(self.player.equipment.get('r_hand'), 'hands', 1) < 2:
                      actual_slot = 'l_hand'
                  else:
                      actual_slot = 'r_hand' # Default swap main
@@ -3280,7 +3930,7 @@ class Game:
              if actual_slot == 'l_hand':
                  # If Main hand has 2H, cannot equip offhand
                  r_item = self.player.equipment.get('r_hand')
-                 if r_item and r_item.slot == '2h':
+                 if r_item and (getattr(r_item, 'hands', 1) == 2 or r_item.slot == '2h'):
                      self.player.inventory.append(r_item)
                      self.player.equipment['r_hand'] = None
                      self.log("你收起了雙手武器以裝備副手。")
@@ -3310,8 +3960,20 @@ class Game:
         target_slot = None
         target_item = None
         
-        keyword = keyword.strip()
-        if keyword.isdigit():
+        keyword = keyword.strip().lower()
+        
+        # Slot Mapping (e1-e8)
+        slot_map = {
+             'e1': 'r_hand', 'e2': 'l_hand',
+             'e3': 'head', 'e4': 'neck', 
+             'e5': 'body', 'e6': 'legs', 
+             'e7': 'feet', 'e8': 'finger'
+        }
+        
+        if keyword in slot_map:
+            target_slot = slot_map[keyword]
+            target_item = self.player.equipment.get(target_slot)
+        elif keyword.isdigit():
             idx = int(keyword) - 1
             if 0 <= idx < len(equipment_list):
                 target_slot, target_item = equipment_list[idx]
@@ -3342,6 +4004,49 @@ class Game:
         self.update_time(10)
         self.check_room_aggression()
 
+    def handle_inspect_enemy(self, target_name):
+        """Inspect enemy equipment in the same room (偵查敵人裝備 — sne <enemy>)"""
+        curr_room = self.world.get_room(self.player.x, self.player.y)
+        target = None
+        
+        for enemy in curr_room.enemies:
+            if target_name.lower() in enemy.name.lower():
+                target = enemy
+                break
+        
+        if not target:
+            self.log(f"你在這裡沒看到 '{target_name}'。")
+            return
+        
+        self.log(f"[bold cyan]== 偵查 {target.name} ==[/]")
+        self.log(f"等級: Lv.{target.level} | HP: {target.hp}/{target.max_hp} | 類型: {target.type}")
+        
+        if target.equipment:
+            self.log("[bold]裝備:[/]")
+            slot_names = {'r_hand': '右手', 'l_hand': '左手', 'body': '護甲', 
+                         'head': '頭盔', 'legs': '護腿', 'feet': '靴子'}
+            for slot, item in target.equipment.items():
+                slot_cn = slot_names.get(slot, slot)
+                dur_str = ""
+                if hasattr(item, 'current_durability') and hasattr(item, 'max_durability'):
+                    dur_pct = int(item.current_durability / item.max_durability * 100) if item.max_durability > 0 else 0
+                    if dur_pct <= 20:
+                        dur_str = f" [red](耐久: {item.current_durability}/{item.max_durability} - 即將損壞!)[/]"
+                    elif dur_pct <= 50:
+                        dur_str = f" [yellow](耐久: {item.current_durability}/{item.max_durability})[/]"
+                    else:
+                        dur_str = f" (耐久: {item.current_durability}/{item.max_durability})"
+                
+                display = item.get_display_name() if hasattr(item, 'get_display_name') else item.name
+                self.log(f"  [{slot_cn}] {display}{dur_str}")
+        else:
+            self.log("[dim]沒有裝備。[/]")
+        
+        if target.debuffs:
+            debuff_names = {'blind': '致盲', 'knockdown': '擊倒', 'def_down': '防禦下降'}
+            debuff_str = ', '.join(f"{debuff_names.get(k,k)} ({v}回合)" for k, v in target.debuffs.items())
+            self.log(f"[yellow]狀態: {debuff_str}[/]")
+
     def handle_sit(self):
         if self.player.is_sitting:
             self.log("你已經坐下了。")
@@ -3350,7 +4055,23 @@ class Game:
         self.player.is_sitting = True
         self.log("[green]你坐下來休息。體力恢復速度提升！[/]")
 
+    def handle_sneak(self):
+        """Toggle stealth mode (潛行模式切換)"""
+        if self.player.is_sneaking:
+            self.player.is_sneaking = False
+            self.log("[dim]你停止潛行，恢復正常行動。[/]")
+        else:
+            self.player.is_sneaking = True
+            self.log("[bold cyan]你開始潛行... 腳步輕盈 (偵查加成 +30, 失敗不觸發敵人)[/]")
+
     def handle_stand(self):
+        # Check for knockdown recovery
+        if self.player.has_status('knockdown'):
+            del self.player.status_effects['knockdown']
+            self.player.is_sitting = False
+            self.log("[bold green]你掙扎著從地上爬了起來! (擊倒解除)[/]")
+            return
+        
         if not self.player.is_sitting:
             self.log("你已經站著了。")
             return
@@ -3366,6 +4087,7 @@ class DataLoader:
         self.enemies = {} # id -> Enemy (prototype)
         self.rooms = {} # id -> Room
         self.settings = {}
+        self.balance = BalanceManager(os.path.join(self.data_dir, 'balance.csv'))
         self.load_settings()
 
     def load_settings(self):
@@ -3435,7 +4157,7 @@ class DataLoader:
                 if reader.fieldnames and 'hands' not in reader.fieldnames:
                      print(f"[items.csv] Warning: hands column missing")
                 for row in reader:
-                    # id,name,type,value,keyword,min_dmg,max_dmg,defense,slot,description,english_name,hands,accuracy
+                    # id,name,type,value,keyword,min_dmg,max_dmg,defense,slot,description,english_name,hands,accuracy,max_durability,rarity,set_id,is_unique
                     item_id = row['id']
                     name = row['name']
                     i_type = row['type']
@@ -3446,6 +4168,9 @@ class DataLoader:
                     english_name = row.get('english_name', '')
                     
                     max_dur = int(row.get('max_durability', 0))
+                    csv_rarity = row.get('rarity', 'Common').strip() or 'Common'
+                    set_id = row.get('set_id', '').strip()
+                    is_unique = row.get('is_unique', 'FALSE').strip().upper() == 'TRUE'
 
                     item = None
                     if i_type == 'weapon':
@@ -3453,12 +4178,12 @@ class DataLoader:
                         max_d = int(row.get('max_dmg', 0))
                         hands = int(row.get('hands', 1)) 
                         accuracy = int(row.get('accuracy', 100))
-                        item = Weapon(name, desc, int(value), keyword, min_d, max_d, slot, english_name=english_name, hands=hands, accuracy=accuracy, max_durability=max_dur)
+                        item = Weapon(name, desc, int(value), keyword, min_d, max_d, slot, rarity=csv_rarity, english_name=english_name, hands=hands, accuracy=accuracy, max_durability=max_dur, set_id=set_id, is_unique=is_unique)
                     elif i_type == 'armor' or i_type == 'helm': 
                         defense = int(row.get('defense', 0))
-                        item = Armor(name, desc, int(value), keyword, int(defense), slot, english_name=english_name, max_durability=max_dur)
+                        item = Armor(name, desc, int(value), keyword, int(defense), slot, rarity=csv_rarity, english_name=english_name, max_durability=max_dur, set_id=set_id, is_unique=is_unique)
                     else:
-                        item = Item(name, desc, int(value), keyword, english_name=english_name, max_durability=max_dur)
+                        item = Item(name, desc, int(value), keyword, rarity=csv_rarity, english_name=english_name, max_durability=max_dur, set_id=set_id, is_unique=is_unique)
                     
                     self.items[item_id] = item
             print("Items loaded.")
@@ -3515,7 +4240,8 @@ class DataLoader:
                         int(row['respawn_time']),
                         row['type'],
                         level,
-                        is_thief=is_thief
+                        is_thief=is_thief,
+                        balance_manager=self.balance
                     )
 
                     
@@ -3596,7 +4322,7 @@ class DataLoader:
                     elif zone == 'wasteland': symbol = Color.colorize('[W]', Color.ORANGE)
                     elif zone == 'nexus': symbol = Color.colorize('[O]', Color.CYAN)
                     
-                    room = Room(row['name'], row['description'], symbol)
+                    room = Room(row['name'], row['description'], symbol, zone=zone)
                     room.x = int(row['x'])
                     room.y = int(row['y'])
                     
@@ -3632,24 +4358,27 @@ class DataLoader:
                     
                         # Apply Aggression Chance based on Depth
                         # Distance from (0,0) -> Y axis mostly
-                        dist = abs(room.y)
+                        dist = int(((room.x ** 2) + (room.y ** 2)) ** 0.5)
+                        
+                        # Distance-based Scaling!
+                        # Every 5 steps away, enemy level grows by 1.
+                        bonus_level = dist // 5
+                        if bonus_level > 0:
+                            new_enemy.level += bonus_level
+                            new_enemy.scale_to_player(new_enemy.level) # Re-scale to its own new level
+                        
                         # Chance: 1% per step. Max 80%?
                         chance = min(0.8, dist * 0.01)
-                        dist_x = abs(room.x)
-                        chance += min(0.2, dist_x * 0.01) # also X
                         
                         # Apply to all enemies in room (even if multiple)
                         for e in room.enemies:
-                            # If not already aggressive (default False)
-                            # Add base chance if we had "base_aggro" in Enemy class, but for now just depth
                             e.aggro_chance = chance 
-                            
-                            # Optional: Bosses always aggressive?
                             if e.proto_id and e.proto_id.startswith('boss_'):
                                 e.aggro_chance = 1.0
                         else:
                             # Bosses don't mutate (already strong)
-                            room.enemies.append(copy.deepcopy(proto))
+                            if is_boss:
+                                room.enemies.append(copy.deepcopy(proto))
                         
                         if not is_boss and not is_elite:
                             count = random.randint(1, 5)
@@ -3675,7 +4404,7 @@ class DataLoader:
                             if i_id in self.items:
                                 shop_items.append(self.items[i_id])
                         if shop_items:
-                            room.shop = Shop(f"{row['name']} Shop", "A local shop.", shop_items)
+                            room.shop = Shop(f"{row['name']} Shop", "A local shop.", shop_items, balance_manager=self.balance)
 
                     self.rooms[row['id']] = room
                     room._raw_exits = row['exits']

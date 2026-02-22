@@ -31,7 +31,10 @@ aliases,,List command aliases,aliases
 help,h,Show help,help
 skill,sk,List skills / Use skill,skill [name]
 skill blind,bl,Blind Enemy (Lower Def),bl <enemy>
-skill kick,kn;kp,Kick Enemy (Dmg + Def Down),kn <enemy>
+skill kick,kn;kp,Kick Enemy (Knockdown),kn <enemy>
+skill disarm,da;di,Disarm Enemy (Drop Weapon),da <enemy>
+skill sunder,su;sd,Sunder Equipment (破甲),su <enemy>
+sneak,sne,Toggle stealth mode (潛行),sneak
 scan north,sn,Scan North,sn
 scan south,ss,Scan South,ss
 scan east,se,Scan East,se

@@ -1,33 +1,29 @@
 # Project Task List
 
-## Current Objectives
-- [x] **Core Engine**
-    - [x] Basic command parser (look, move, help)
-    - [x] Map system with Fog of War
-    - [x] ANSI Color support
-- [x] **Data Management**
-    - [x] CSV loading with UTF-8-SIG (BOM) support for Excel compatibility
-    - [x] `skills.csv`, `items.csv`, `enemies.csv`, `rooms.csv` integration
-- [x] **Combat & Stats**
-    - [x] Basic combat loop (attack/defend)
-    - [x] Damage formulas implementation (incorporating weapon stats)
-    - [x] Skill system (`power`, `berserk`, etc.)
-    - [x] Stat reset functionality
-- [x] **Quality of Life**
-    - [x] Alias system for commands
-    - [x] Scan shortcuts (sc, n, s, e, w)
-    - [x] `train` command showing available points
+## Current Objectives (Strategic Combat & Town Services)
+- [ ] **Advanced Combat & Action Logic**
+    - [ ] `blind` skill: 2-3 turns duration; disables "Snatch" and lowers accuracy.
+    - [ ] `kick` skill: Damage + Knockdown chance; increases success rate of next "Disarm".
+    - [ ] `stand` command: Required for players to recover from Knockdown; NPCs auto-stand after 2 turns.
+    - [ ] "Snatch" Window: Logic for players/NPCs to grab items from the room floor using Agility checks.
+- [ ] **Equipment & Durability System**
+    - [ ] Update `items.csv`: Add `durability`, `max_durability`, `rarity`, `set_id`, and `is_unique`.
+    - [ ] Implement Item Destruction: Gear is removed and stats drop when durability reaches 0.
+    - [ ] Boss Inventory: Stolen player items are stored in the Boss's persistent data for future recovery.
+- [ ] **Town Services (Village Center)**
+    - [ ] Gacha System: Weighted loot table for Blue+ items and Unique gear.
+    - [ ] Reforge System: Randomize item affixes with an optional "Lock" cost for specific stats.
+- [ ] **Stealth & Intel**
+    - [ ] `sneak` status: Move without triggering aggro.
+    - [ ] `scan` (sc) update: List Boss/Elite gear and bag contents first while in stealth.
 
 ## Pending Tasks
-- [ ] **Advanced Combat**
-    - [ ] Magic/Spell system implementation
-    - [ ] Status effects (poison, stun, etc.)
-- [ ] **World Building**
-    - [ ] Expand map content (more areas beyond the starter zone)
-    - [ ] Add more complex enemy types
-- [ ] **Economy**
-    - [ ] Shops and trading interface
-    - [ ] Currency system refinement
+- [ ] **Unique & Affix Logic**
+    - [ ] Global UID tracker: Prevent duplicate "Server-Unique" items (e.g., Elven Longsword).
+    - [ ] Affix Generator: Physical/magic dmg modifiers based on rarity.
+    - [ ] Set Bonus Logic: Check for matching `set_id` and apply extra attributes.
+- [ ] **Data & Balancing**
+    - [ ] `skills.csv` expansion: Add Disarm/Sunder/Blind effect modifiers.
+    - [ ] Protection logic: Use Luck and Dexterity to reduce the chance of being disarmed.
 - [ ] **System**
-    - [ ] Save/Load system for player progress
-    - [ ] GUI Development (Plan for future)
+    - [ ] GUI Development: Real-time notification when an item is dropped or broken.
